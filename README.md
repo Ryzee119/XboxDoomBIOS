@@ -3,10 +3,11 @@
 * This is a 256kB bios image that replaces the OG Xbox BIOS to do one thing. Play DOOM.
 * 100% opensource with no copyright code.
 
-https://github.com/user-attachments/assets/281df29c-15e2-49a3-bb28-a95962b0896d
+https://github.com/user-attachments/assets/ad5efb7f-79c7-41e3-9849-dc8d458fa6fb
 
 ## Todo
 * Fix conexant video encoder issues
+* Fix fatx writes? Seems to work on xemu but not hw
 * Test Xcalibur, Focus alot more
 * Support locked Xbox hard drives
 
