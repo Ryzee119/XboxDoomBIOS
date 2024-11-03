@@ -108,10 +108,9 @@ user_file_handle_t *fatx_fs_open(user_fs_handle_t *handle, const char *path, int
 
     if (flags & O_CREAT) {
         uint8_t file_exists = fatx_get_attr(fs, file->path, &file->attr) == FATX_STATUS_SUCCESS;
-        printf_ts("[FATX] File exists: %d\n", file_exists);
+
         if (file_exists == 0) {
             if (fatx_mknod(fs, file->path) != FATX_STATUS_SUCCESS) {
-                printf_ts("[FATX] Failed to create file\n");
                 vPortFree(file);
                 return NULL;
             }
@@ -230,8 +229,10 @@ int fatx_fs_close(user_file_handle_t *fd)
 {
     fatx_file_t *file = (fatx_file_t *)fd;
 
-    // Xbox can turn off any time, be aggressive with cache flushes
-    fatx_flush_fat_cache(file->fs);
+    // Xbox can turn off any time, be aggressive with cache flushes for writes
+    if (file->flags & O_WRONLY || file->flags & O_RDWR) {
+        fatx_flush_fat_cache(file->fs);
+    }
 
     vPortFree(file);
     return 0;
@@ -437,7 +438,5 @@ size_t fatx_dev_write(struct fatx_fs *fs, const void *buf, size_t size, size_t i
 
     seek_offset += size * items;
     fatx_extra_data->seek_offset = seek_offset;
-    fatx_flush_fat_cache(fs);
-
     return items;
 }

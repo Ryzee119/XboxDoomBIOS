@@ -90,10 +90,11 @@ static void freertos_entry(void *parameters)
     if (fileio_register_driver('E', &fatx_io, &ata_ll_io, NULL, &ata_bus) != 0) {
         printf_ts("[FS] Error mounting drive E as FATX\n");
     }
-
+#if (0)
     if (fileio_register_driver('D', &iso9660_io, &ata_ll_io, NULL, &ata_bus) != 0) {
         printf_ts("[FS] Error mounting drive D as ISO9660\n");
     }
+#endif
 
     xbox_led_output(XLED_GREEN, XLED_GREEN, XLED_GREEN, XLED_GREEN);
 
@@ -134,5 +135,6 @@ void _exit(int code)
 
 int gettimeofday(struct timeval *restrict tv, void *restrict tz)
 {
+    printf("gettimeofday\n");
     return -1;
 }

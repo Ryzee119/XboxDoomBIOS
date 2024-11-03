@@ -1698,7 +1698,7 @@ typedef struct
 
 
 // Misc. other strings.
-#define SAVEGAMENAME "doomsav"
+#define SAVEGAMENAME "E:/doom/doomsaaav"
 
 //
 // File locations,
@@ -22177,6 +22177,10 @@ void M_SaveSelect(int choice)
     if (!doom_strcmp(savegamestrings[choice], EMPTYSTRING))
         savegamestrings[choice][0] = 0;
     saveCharIndex = (int)doom_strlen(savegamestrings[choice]);
+
+
+    doom_strcpy(savegamestrings[saveSlot], "xbox_save");
+    saveCharIndex = 9;
 }
 
 

@@ -52,14 +52,12 @@ static void *dooom_open(const char *filename, const char *mode)
     if (filename == NULL) {
         return NULL;
     }
-    printf_ts("[DOOM] Opening file %s\n", filename);
 
     return fopen(filename, mode);
 }
 
 static void dooom_close(void *handle)
 {
-    printf("[DOOM] Closing file\n");
     fclose((FILE *)handle);
 }
 

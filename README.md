@@ -1,8 +1,9 @@
-Play your Original Xbox the way Bill Gates truly intended with DoomBIOS.
+## DoomBIOS
+* Play your Original Xbox the way Bill Gates truly intended with DoomBIOS.
+* This is a 256kB bios image that replaces the OG Xbox BIOS to do one thing. Play DOOM.
+* 100% opensource with no copyright code.
 
-This is a 256kB bios image that replaces the OG Xbox BIOS to do one thing. Play DOOM.
-
-100% opensource with no copyright code.
+https://github.com/user-attachments/assets/281df29c-15e2-49a3-bb28-a95962b0896d
 
 ## Todo
 * Fix conexant video encoder issues
@@ -33,6 +34,7 @@ Although we run doom, there's alot of boilerplate to make this work. The followi
 * Custom ATA/ATAPI driver with full DMA support up to UDMA6 (auto negotiated speeds)
 * Seemlessly read/write files on FAT16,FAT32,exFAT and FATX filesystems using standard c library calls (fopen etc)
 * ISO9660 support for reading DVD roms
+* USB Mass Storage support
 * PCM audio driver from nxdk
 * Compresses the bios at compile time, and decompresses to RAM at run time using LZ4 for significant ROM savings.
 * Uses the visor exploit which runs on any xbox version

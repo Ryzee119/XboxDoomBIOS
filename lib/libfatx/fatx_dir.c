@@ -502,10 +502,12 @@ int fatx_create_dirent(struct fatx_fs *fs, char const *path, struct fatx_dir *di
     attr.attributes = attributes;
     attr.first_cluster = cluster;
 
+    #if (0)
     curtime = time(NULL);
     fatx_time_t_to_fatx_ts(curtime, &(attr.created));
     fatx_time_t_to_fatx_ts(curtime, &(attr.modified));
     fatx_time_t_to_fatx_ts(curtime, &(attr.accessed));
+    #endif
 
     status = fatx_write_dir(fs, dir, &entry, &attr);
     if (status)

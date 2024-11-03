@@ -173,6 +173,8 @@ int fatx_unpack_time(uint16_t in, struct fatx_ts *out)
 void fatx_time_t_to_fatx_ts(const time_t in, struct fatx_ts *out)
 {
     struct tm *t;
+    printf("fatx_time_t_to_fatx_ts");
+    #if (0)
 
     t = localtime(&in);
 
@@ -182,6 +184,14 @@ void fatx_time_t_to_fatx_ts(const time_t in, struct fatx_ts *out)
     out->day    = t->tm_mday;
     out->month  = t->tm_mon;
     out->year   = t->tm_year+1900;
+    #endif
+
+    out->second = 0;
+    out->minute = 0;
+    out->hour   = 0;
+    out->day    = 1;
+    out->month  = 1;
+    out->year   = 2024;
 }
 
 time_t fatx_ts_to_time_t(const struct fatx_ts *in)

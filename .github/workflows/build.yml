@@ -1,0 +1,32 @@
+name: Doom!
+
+on: [push, pull_request]
+
+jobs:
+  Xbox:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install and Setup Dependencies
+      run: |
+        sudo apt-get update -y && sudo apt-get install -y build-essential clang nasm cmake python3 python3-pip
+        pip install objutils lz4 pyelftools
+
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Compile
+      run: |
+        mkdir build && cd build
+        cmake ..
+        cmake --build .
+
+    # Only create artifact on a push to xbox
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: DoomBIOS
+        path: |
+          build/rom.bin
