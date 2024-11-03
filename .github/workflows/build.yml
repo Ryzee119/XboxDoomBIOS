@@ -30,3 +30,4 @@ jobs:
         name: DoomBIOS
         path: |
           build/rom.bin
+          build/original.elf
