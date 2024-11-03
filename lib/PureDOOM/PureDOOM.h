@@ -1698,7 +1698,7 @@ typedef struct
 
 
 // Misc. other strings.
-#define SAVEGAMENAME "E:/doom/doomsaaav"
+#define SAVEGAMENAME "E:/doom/doomsav"
 
 //
 // File locations,
