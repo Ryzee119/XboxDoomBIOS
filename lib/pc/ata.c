@@ -519,11 +519,13 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
         if (ide_device->supported_udma_mode) {
             uint8_t udma_mode = 0x00;
             for (int8_t mode = 6; mode >= 0; mode--) {
-                if (ide_device->supported_udma_mode & (1 << mode)) {
+                if (ide_device->supported_udma_mode & (1 << (mode - 1))) {
                     udma_mode = ATA_TRANSFER_MODE_UDMA | mode;
                     break;
                 }
             }
+            udma_mode = ATA_TRANSFER_MODE_UDMA | udma_mode;
+            printf("[ATA] Setting UDMA Mode %02x\n", udma_mode);
 
             outb(ata_bus->io_base + ATA_IO_FEATURES, ATA_FEATURE_SET_TRANSFER_MODE);
             outb(ata_bus->io_base + ATA_IO_SECTOR_COUNT, udma_mode);
@@ -539,7 +541,6 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
             printf("[ATA] Firmware: %s\n", ide_device->firmware);
             printf("[ATA] Wire80: %d\n", ata_bus->wire80);
             printf("[ATA] Supported UDMA: %02x\n", ide_device->supported_udma_mode);
-            printf("[ATA] Selected UDMA: %02x\n", ide_device->selected_udma_mode);
             if (ide_device->is_atapi == 0) {
                 printf("[ATA] LBA28 Sectors: %d\n", ide_device->ata.total_sector_count_lba28);
                 printf("[ATA] LBA48 Sectors: %llu\n", ide_device->ata.total_sector_count_lba48);
