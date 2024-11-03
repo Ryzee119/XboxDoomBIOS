@@ -471,6 +471,13 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
                     } else {
                         ide_device->supported_udma_mode &= 0x03; // Restrict to UDMA 2 or less of 40 wire conductor
                     }
+
+                    // Check some set bits to confirm they are valid. Seems like but thinks something is connected and its just noise
+                    // These shall be set accordingly to the spec
+                    if (!((wtemp & 0x8000) == 0 && (wtemp & 0x4000) && (wtemp & 0x0001))) {
+                        ide_device->is_present = 0;
+                        break;
+                    }
                 }
 
                 // LBA28 Addressing
