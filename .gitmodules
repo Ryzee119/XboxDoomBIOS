@@ -1,0 +1,18 @@
+[submodule "lib/picolibc"]
+	path = lib/picolibc
+	url = https://github.com/picolibc/picolibc.git
+[submodule "lib/freertos_kernel"]
+	path = lib/freertos_kernel
+	url = https://github.com/Ryzee119/FreeRTOS-Kernel.git
+[submodule "lib/tinyusb"]
+	path = lib/tinyusb
+	url = https://github.com/Ryzee119/tinyusb_src.git
+[submodule "lib/tusb_xinput"]
+	path = lib/tusb_xinput
+	url = https://github.com/Ryzee119/tusb_xinput.git
+[submodule "lib/arith64"]
+	path = lib/arith64
+	url = https://github.com/glitchub/arith64.git
+[submodule "lib/lib9660"]
+	path = lib/lib9660
+	url = https://github.com/erincandescent/lib9660.git

@@ -1,0 +1,7 @@
+.vscode
+build
+delete
+*.o
+*.d
+*.elf
+*.bin

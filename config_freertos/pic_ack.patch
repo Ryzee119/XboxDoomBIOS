@@ -1,0 +1,13 @@
+diff --git a/portable/GCC/IA32_flat/portASM.S b/portable/GCC/IA32_flat/portASM.S
+index c01b32bce..88f3b50ef 100644
+--- a/portable/GCC/IA32_flat/portASM.S
++++ b/portable/GCC/IA32_flat/portASM.S
+@@ -213,6 +213,8 @@ _skip_context_switch:
+         1:
+     .endif
+ 
++    movb $0x20, %al
++    outb %al, $0x20
+     popa
+ 
+     /* EOI. */

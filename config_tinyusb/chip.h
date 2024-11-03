@@ -1,0 +1,1 @@
+#define LPC_USB_BASE 0xFED00000

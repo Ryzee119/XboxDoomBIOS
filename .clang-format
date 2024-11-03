@@ -1,0 +1,13 @@
+BasedOnStyle: Microsoft
+ColumnLimit: 120
+IndentCaseLabels: true
+AlignTrailingComments: true
+AlignConsecutiveMacros: true
+InsertBraces: true
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterControlStatement: false
+  AfterExternBlock: false
+  BeforeElse: false
+  AfterUnion: true
