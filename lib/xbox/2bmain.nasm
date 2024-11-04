@@ -72,8 +72,8 @@ section .header70
     dd 0x16ce0090
     dd 0x00000dc0
 %else
-    dd 0x12d10070
-    dd 0x00000c90
+    dd 0x16ce0090
+    dd 0x00000000
 %endif
 
 section .xcodes
