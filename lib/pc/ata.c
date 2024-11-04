@@ -216,6 +216,7 @@ static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t r
         bytes_to_process -= bytes;
 
         prd_table[prd_index].base_addr = (uint32_t)system_get_physical_address(buffer8);
+        assert((prd_table[prd_index].base_addr & 0x3) == 0);
         prd_table[prd_index].byte_count = bytes;
         prd_table[prd_index].flags = (bytes_to_process) ? 0x0000 : 0x8000; // Set MSB to indicate the last entry
 
@@ -270,17 +271,6 @@ static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t r
     // Reading this byte may perform a necessary final cache flush of the DMA data to memory.
     uint8_t device_status = inb(ata_bus->io_base + ATA_IO_STATUS);
 
-    if (read == 0) {
-        // Perform a ATA_CMD_FLUSH_CACHE
-        ata_command_t ata_command = {
-            .command = ATA_CMD_FLUSH_CACHE,
-            .lba = 0,
-            .sector_count = 0,
-            .feature = 0,
-        };
-        ata_send_command(ata_bus, 0, &ata_command);
-    }
-
     return error;
 }
 
@@ -331,13 +321,15 @@ static int8_t ata_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, ata_com
     }
 
     int8_t error = 0;
+    const int8_t is_lba28 = ATA_CMD_IS_LBA28(ata_command->command);
+    const int8_t is_lba48 = ATA_CMD_IS_LBA48(ata_command->command);
 
     // LBA28: A sector count of 0 means 256 sectors
     // LBA48: A sector count of 0 means 65536 sectors
     uint32_t sector_count = (buffer_length + (ide_device->sector_size - 1)) / ide_device->sector_size;
-    if (sector_count == 256 && ATA_CMD_IS_LBA28(ata_command->command)) {
+    if (sector_count == 256 && is_lba28) {
         sector_count = 0;
-    } else if (sector_count == 65536 && ATA_CMD_IS_LBA48(ata_command->command)) {
+    } else if (sector_count == 65536 && is_lba48) {
         sector_count = 0;
     }
 
@@ -352,6 +344,16 @@ static int8_t ata_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, ata_com
     ata_set_irq_en(ata_bus, 0);
 
     error = busmaster_dma_transfer(ata_bus, buffer, read, buffer_length);
+
+    if (read == 0) {
+        ata_command_t ata_command = {
+            .command = (is_lba28) ? ATA_CMD_FLUSH_CACHE : ATA_CMD_FLUSH_CACHE_EXT,
+            .lba = 0,
+            .sector_count = 0,
+            .feature = 0,
+        };
+        ata_send_command(ata_bus, 0, &ata_command);
+    }
 
 bail_out:
     ata_set_irq_en(ata_bus, 1);

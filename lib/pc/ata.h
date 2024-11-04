@@ -54,6 +54,7 @@
 #define ATA_CMD_IS_LBA(cmd)   (ATA_CMD_IS_LBA28(cmd) || ATA_CMD_IS_LBA48(cmd))
 
 #define ATA_CMD_FLUSH_CACHE     0xE7
+#define ATA_CMD_FLUSH_CACHE_EXT 0xEA
 #define ATA_CMD_IDENTIFY        0xEC
 #define ATA_CMD_PACKET_IDENTIFY 0xA1
 #define ATA_CMD_PACKET          0xA0
