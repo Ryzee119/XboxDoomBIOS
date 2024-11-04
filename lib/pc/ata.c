@@ -471,6 +471,14 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
                     } else {
                         ide_device->supported_udma_mode &= 0x03; // Restrict to UDMA 2 or less of 40 wire conductor
                     }
+
+                    //Xbox specific. Apparently the 80 wire conduct bit is not reliable on xbox, so we assume it is low always
+                    ide_device->supported_udma_mode &= 0x03;
+
+                    // We atleast need UDMA1. This shouldnt be zero
+                    if (ide_device->supported_udma_mode == 0) {
+                        ide_device->supported_udma_mode = 0x01;
+                    }
                 }
 
                 // LBA28 Addressing
