@@ -126,6 +126,22 @@ __attribute__((section(".boot_code"))) void *lz4_error_memory_allocation_is_disa
 }
 #include "lz4/lz4.c"
 
+__attribute__((section(".boot_code"))) uint32_t boot_calculate_crc32(const uint8_t *data, size_t length) {
+    uint32_t crc = 0xFFFFFFFF;
+
+    for (size_t i = 0; i < length; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            if (crc & 1) {
+                crc = (crc >> 1) ^ 0xEDB88320;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    return crc ^ 0xFFFFFFFF;
+}
+
 extern void __libc_init_array(void);
 void boot(void)
 {
@@ -137,6 +153,15 @@ void boot(void)
     smbus_init(PCI_SMBUS_IO_REGISTER_BASE_1);
 
     xbox_serial_init();
+
+    extern int __uncompressed_data_crc;
+    extern int __uncompressed_data_size;
+    volatile void *_start = (void *)0x3C00000;
+    uint32_t crc32 = boot_calculate_crc32((uint8_t *)_start, __uncompressed_data_size);
+    if (crc32 != __uncompressed_data_crc) {
+        xbox_led_output(XLED_ORANGE, XLED_RED, XLED_ORANGE, XLED_RED);
+        while(1);
+    }
 
     cpu_disable_cache();
     cpu_update_microcode();

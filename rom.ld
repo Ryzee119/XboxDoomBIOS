@@ -124,8 +124,9 @@ SECTIONS {
     __boot_code_size = SIZEOF(.boot_code);
 
     /* first 4 bytes are the size of original uncompressed data */
-    __uncompressed_data_size = LOADADDR(.compressed);
-    __compressed_data_lma = LOADADDR(.compressed) + 4;
+    __uncompressed_data_crc = LOADADDR(.compressed);
+    __uncompressed_data_size = LOADADDR(.compressed) + 4;
+    __compressed_data_lma = LOADADDR(.compressed) + 8;
 
     __bss_dsize = SIZEOF(.bss) / 4;
 }

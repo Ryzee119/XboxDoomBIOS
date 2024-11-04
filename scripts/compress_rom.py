@@ -1,6 +1,7 @@
 from elftools.elf.elffile import ELFFile
 import lz4.block
 import struct
+import zlib
 import sys
 
 def compress_rom(input_file, output_file):
@@ -17,6 +18,10 @@ def compress_rom(input_file, output_file):
 
     # Compress the data using LZ4, size of the uncompressed data is stored in the header
     compressed_data = lz4.block.compress(original_data, mode='high_compression', store_size = True)
+
+    # Calculate the CRC32 checksum of the compressed data then push it to the beginning of the compressed data
+    crc32_value = zlib.crc32(original_data) & 0xFFFFFFFF
+    compressed_data = crc32_value.to_bytes(4, 'little') + compressed_data
 
     with open(output_file, 'wb') as f_out:
         f_out.write(compressed_data)
