@@ -4,6 +4,7 @@
 
 int open(const char *path, int flags, ...)
 {
+    assert(path[1] == ':');
     char drive_letter = path[0];
 
     file_io_driver_t *driver = fileio_find_driver(drive_letter);
@@ -80,6 +81,7 @@ off_t lseek(int fd, off_t offset, int whence)
 // No dirent in picolibc, so we need to define our own dirent-like functions
 directory_handle_t *opendir(const char *path)
 {
+    assert(path[1] == ':');
     char drive_letter = path[0];
     file_io_driver_t *driver = fileio_find_driver(drive_letter);
     if (driver == NULL) {
@@ -129,7 +131,7 @@ file_io_driver_t *fileio_find_driver(char drive_letter)
         return NULL;
     }
     drive_letter = toupper(drive_letter);
-    taskENTER_CRITICAL();
+    vTaskSuspendAll();
     file_io_driver_t *driver = fs_driver_head;
     while (driver != NULL) {
         if (driver->drive_letter == drive_letter) {
@@ -137,7 +139,7 @@ file_io_driver_t *fileio_find_driver(char drive_letter)
         }
         driver = driver->next;
     }
-    taskEXIT_CRITICAL();
+    xTaskResumeAll();
     if (driver == NULL) {
         printf_ts("Driver not found for drive %c\n", drive_letter);
     }
@@ -164,7 +166,7 @@ int8_t fileio_register_driver(const char drive_letter, fs_io_t *io, fs_io_ll_t *
     }
     xSemaphoreGive(driver->mutex);
 
-    taskENTER_CRITICAL();
+    vTaskSuspendAll();
 
     if (fs_driver_head == NULL) {
         fs_driver_head = driver;
@@ -177,7 +179,7 @@ int8_t fileio_register_driver(const char drive_letter, fs_io_t *io, fs_io_ll_t *
         p->next = driver;
     }
 
-    taskEXIT_CRITICAL();
+    xTaskResumeAll();
 
     user_fs_ll_handle_t *ll_handle = driver->io_ll->init(driver, ll_arg);
     if (ll_handle == NULL) {
@@ -213,19 +215,21 @@ int8_t fileio_unregister_driver(const char drive_letter)
 {
     int8_t status = -1;
 
-    taskENTER_CRITICAL();
+    const char drive_letter_upper = toupper(drive_letter);
+
+    vTaskSuspendAll();
 
     file_io_driver_t *driver = fs_driver_head;
     file_io_driver_t *prev = NULL;
     while (driver != NULL) {
-        if (driver->drive_letter == drive_letter) {
+        if (driver->drive_letter == drive_letter_upper) {
             break;
         }
         prev = driver;
         driver = driver->next;
     }
 
-    taskEXIT_CRITICAL();
+    xTaskResumeAll();
 
     if (driver) {
         driver->io->deinit(driver->handle);
