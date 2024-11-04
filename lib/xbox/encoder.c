@@ -278,6 +278,9 @@ void xbox_encoder_configure(uint32_t mode_coding, display_information_t *display
                     } else if (CONEXANT_OFFSETS[i] == 0x8E) {
                         value &= 0xF7;
                         value |= ((h_blanki >> 8) & 0x01) << 3;
+                    } else if (CONEXANT_OFFSETS[i] == 0x38) {
+                        value &= 0xFE;
+                        value |= ((h_blanki >> 9) & 0x01) << 0;
                     }
 
                     // h_activei
@@ -294,6 +297,9 @@ void xbox_encoder_configure(uint32_t mode_coding, display_information_t *display
                     } else if (CONEXANT_OFFSETS[i] == 0x96) {
                         value &= 0xFC;
                         value |= ((v_linesi >> 8) & 0x03) << 0;
+                    } else if (CONEXANT_OFFSETS[i] == 0x38) {
+                        value &= 0xFD;
+                        value |= ((v_linesi >> 10) & 0x01) << 1;
                     }
 
                     // v_blanki
