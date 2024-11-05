@@ -6,6 +6,7 @@
 #include "main.h"
 
 #define FATX_MIN(a, b) ((a) < (b) ? (a) : (b))
+#define CACHE_INVALID  0xFFFFFFFFFFFFFFFF
 
 typedef struct fatx_fs_file
 {
@@ -59,7 +60,7 @@ user_fs_handle_t *fatx_fs_init(file_io_driver_t *driver, void *arg)
     fatx_extra_data->sector_size = sector_size;
     fatx_extra_data->seek_offset = 0;
     fatx_extra_data->driver = driver;
-    fatx_extra_data->cached_sector = 0xFFFFFFFFFFFFFFFF;
+    fatx_extra_data->cached_sector = CACHE_INVALID;
 
     char path[4] = {'/', drive_letter, '\0'};
 
@@ -387,22 +388,33 @@ size_t fatx_dev_write(struct fatx_fs *fs, const void *buf, size_t size, size_t i
     const uint32_t lba_offset = seek_offset % sector_size;
     uint64_t current_lba = seek_offset / sector_size;
     uint64_t bytes_remaining = size * items;
-
     uint8_t *buf8 = (uint8_t *)buf;
+    int8_t status = 0;
 
     // Unaligned write for first sector
     if (lba_offset != 0) {
         if (fatx_extra_data->cached_sector != current_lba) {
-            fatx_extra_data->driver->io_ll->read(fatx_extra_data->driver->ll_handle, fatx_extra_data->sector_cache,
-                                                 current_lba, 1);
+            status = fatx_extra_data->driver->io_ll->read(fatx_extra_data->driver->ll_handle,
+                                                          fatx_extra_data->sector_cache, current_lba, 1);
+            if (status < 0) {
+                return 0;
+            }
             fatx_extra_data->cached_sector = current_lba;
+            if (status < 0) {
+                fatx_extra_data->cached_sector = CACHE_INVALID;
+                return 0;
+            }
         }
 
         uint32_t chunk = FATX_MIN(bytes_remaining, sector_size - lba_offset);
         memcpy(fatx_extra_data->sector_cache + lba_offset, buf8, chunk);
 
-        fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle, fatx_extra_data->sector_cache,
-                                              current_lba, 1);
+        status = fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle,
+                                                       fatx_extra_data->sector_cache, current_lba, 1);
+        if (status < 0) {
+            fatx_extra_data->cached_sector = CACHE_INVALID;
+            return 0;
+        }
 
         bytes_remaining -= chunk;
         buf8 += chunk;
@@ -414,7 +426,11 @@ size_t fatx_dev_write(struct fatx_fs *fs, const void *buf, size_t size, size_t i
         uint32_t full_sectors = bytes_remaining / sector_size;
         uint64_t full_bytes = full_sectors * sector_size;
 
-        fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle, buf8, current_lba, full_sectors);
+        status =
+            fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle, buf8, current_lba, full_sectors);
+        if (status < 0) {
+            return 0;
+        }
 
         bytes_remaining -= full_bytes;
         buf8 += full_bytes;
@@ -425,14 +441,21 @@ size_t fatx_dev_write(struct fatx_fs *fs, const void *buf, size_t size, size_t i
     if (bytes_remaining > 0) {
         assert(bytes_remaining < sector_size);
         if (fatx_extra_data->cached_sector != current_lba) {
-            fatx_extra_data->driver->io_ll->read(fatx_extra_data->driver->ll_handle, fatx_extra_data->sector_cache,
-                                                 current_lba, 1);
+            status = fatx_extra_data->driver->io_ll->read(fatx_extra_data->driver->ll_handle,
+                                                          fatx_extra_data->sector_cache, current_lba, 1);
+            if (status < 0) {
+                return 0;
+            }
             fatx_extra_data->cached_sector = current_lba;
         }
         memcpy(fatx_extra_data->sector_cache, buf8, bytes_remaining);
 
-        fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle, fatx_extra_data->sector_cache,
-                                              current_lba, 1);
+        status = fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle,
+                                                       fatx_extra_data->sector_cache, current_lba, 1);
+        if (status < 0) {
+            fatx_extra_data->cached_sector = CACHE_INVALID;
+            return 0;
+        }
         bytes_remaining = 0;
     }
 
