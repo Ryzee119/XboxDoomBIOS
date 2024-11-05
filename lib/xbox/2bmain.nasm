@@ -1,6 +1,9 @@
 ; SPDX-License-Identifier: MIT
 ; Copyright (c) 2024 Ryzee119
 
+; This must match what is set in 2bboot.c
+%define DECOMP_RAM_DESTINATION 0x3C00000
+
 extern __user_text_vma
 extern __user_text_size
 
@@ -227,23 +230,23 @@ reload_segment_selectors:
     ; into RAM
     call boot_pic_challenge_response
 
-    ; Decompress user code directly into RAM 0x3C00000 is at ~60MB its plenty of space we know is free
+    ; Decompress user code directly into RAM at DECOMP_RAM_DESTINATION is at ~60MB its plenty of space we know is free
     push dword [__uncompressed_data_size]
-    push dword 0x3C00000
+    push dword DECOMP_RAM_DESTINATION ; base + 0
     push dword __compressed_data_lma
     call LZ4_decompress_fast
     add esp, 16
 
     ; Copy text section
     mov     edi, __user_text_vma
-    mov     esi, 0x3C00000 ; 0x3C00000 + __user_text_size
+    mov     esi, DECOMP_RAM_DESTINATION ; base + __user_text_size
     mov     ecx, __user_text_size
     shr     ecx, 2
     rep     movsd
 
     ; Copy data section
     mov     edi, __user_data_vma
-    mov     esi, 0x3C00000
+    mov     esi, DECOMP_RAM_DESTINATION
     add     esi, __user_text_size
     mov     ecx, __user_data_size
     shr     ecx, 2
@@ -251,7 +254,7 @@ reload_segment_selectors:
 
     ; Copy rodata section
     mov     edi, __user_rodata_vma
-    mov     esi, 0x3C00000 ; 0x3C00000 + __user_text_size + __user_data_size
+    mov     esi, DECOMP_RAM_DESTINATION ; base + __user_text_size + __user_data_size
     add     esi, __user_text_size
     add     esi, __user_data_size
     mov     ecx, __user_rodata_size

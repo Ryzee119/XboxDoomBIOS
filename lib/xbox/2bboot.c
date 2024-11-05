@@ -3,6 +3,9 @@
 
 #include "xbox.h"
 
+// This must match what is set in 2bmain.nasm
+#define DECOMP_RAM_DESTINATION 0x3C00000
+
 void main(void);
 
 // Sections marked __attribute__((section(".boot_code"))) are not compressed in the ROM image
@@ -156,7 +159,8 @@ void boot(void)
 
     extern int __uncompressed_data_crc;
     extern int __uncompressed_data_size;
-    volatile void *_start = (void *)0x3C00000;
+
+    volatile void *_start = (void *)DECOMP_RAM_DESTINATION;
     uint32_t crc32 = boot_calculate_crc32((uint8_t *)_start, __uncompressed_data_size);
     if (crc32 != __uncompressed_data_crc) {
         xbox_led_output(XLED_ORANGE, XLED_RED, XLED_ORANGE, XLED_RED);
