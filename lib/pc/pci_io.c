@@ -51,7 +51,7 @@ void pci_io_input_n(uint8_t bus, uint8_t dev, uint8_t func, uint32_t size_of_dat
     uint32_t i = 0;
     uint8_t *data8 = (uint8_t *)data;
     uint32_t *data32 = (uint32_t *)data;
-    while (size_of_data > 4) {
+    while (size_of_data >= 4) {
         *data32++ = pci_io_input_dword(bus, dev, func, i);
         size_of_data -= 4;
         i += 4;
@@ -68,7 +68,7 @@ void pci_io_output_n(uint8_t bus, uint8_t dev, uint8_t func, uint32_t size_of_da
     uint32_t i = 0;
     uint8_t *data8 = (uint8_t *)data;
     uint32_t *data32 = (uint32_t *)data;
-    while (size_of_data > 4) {
+    while (size_of_data >= 4) {
         pci_io_output_dword(bus, dev, func, i, *data32++);
         size_of_data -= 4;
         i += 4;
