@@ -286,8 +286,11 @@ xc_pci_read 0x800008B4
 xc_andor 0xFFFFF0FF, 0x00000F00
 xc_chain op_pci_write, 0x800008B4
 xc_pci_write 0x80000340, 0xF0F0C0C0
+
+; NOTE ON MCPX D5 The following two lines are 0x00000000 
 xc_pci_write 0x80000344, 0x00C00000
 xc_pci_write 0x8000035C, 0x04070000
+
 xc_pci_write 0x8000036C, 0x00230801
 xc_pci_write 0x8000036C, 0x01230801
 xc_jmp loc_7B5

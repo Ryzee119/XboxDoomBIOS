@@ -8,12 +8,14 @@
 void xbox_pci_init(void)
 {
     uint32_t value;
-    uint32_t pci_mem[0xFF / 4];
+    uint32_t pci_mem[256 / 4];
     pci_header_t *h = (pci_header_t *)pci_mem;
 
     __asm__ __volatile__("cli");
 
 #if (1)
+    pci_io_output_byte(PCI_XBOX_SYSTEM_BUS, PCI_LPCBRIDGE_DEVICE_ID, PCI_LPCBRIDGE_FUNCTION_ID, 0x00000080, 0x02); // v1.1 2BL kill ROM area
+
     // Cromwell does this in asm - says it enables IDE and NIC
     pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_LPCBRIDGE_DEVICE_ID, PCI_LPCBRIDGE_FUNCTION_ID, 0x0000008c, 0x40000000);
 
@@ -24,24 +26,23 @@ void xbox_pci_init(void)
     value = pci_io_input_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x00000064);
     pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x00000064, value | 0x88000000);
 
-    value = pci_io_input_dword(PCI_XBOX_SYSTEM_BUS, PCI_LPCBRIDGE_DEVICE_ID, PCI_LPCBRIDGE_FUNCTION_ID, 0x0000006c);
+    value = pci_io_input_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x0000006c);
     pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x0000006c, value & 0xFFFFFFFE);
-    pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x0000006c, value | 0x00000001);
+    pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x0000006c, value);
 
     // Cromwell - CPU Whoami   ? sesless ?
     pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x00000080, 0x00000100);
 
-    pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_LPCBRIDGE_DEVICE_ID, PCI_LPCBRIDGE_FUNCTION_ID, 0x80, 2); // v1.1 2BL kill ROM area
     uint8_t mcpx_version = pci_io_input_byte(PCI_XBOX_SYSTEM_BUS, PCI_LPCBRIDGE_DEVICE_ID, PCI_LPCBRIDGE_FUNCTION_ID, 0x8);
     if (mcpx_version >= 0xd1) {
         pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_LPCBRIDGE_DEVICE_ID, PCI_LPCBRIDGE_FUNCTION_ID, 0xc8, 0x8f00); // v1.1 2BL <-- death
     }
 
     // Set up the Host bridge (Cromwell - I dont see all this in retail)
-    pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x48, 0x00000114);
-    pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x44, 0x80000000);
-    pci_io_output_byte(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x87, 0x03);       // 64MB Top limit (0x07 for 128MB)
-    pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x84, 0x3FFFFFF); // 64MB top limit
+    //pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x48, 0x00000114); -> repeated below
+    //pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x44, 0x80000000); -> never seen
+    //pci_io_output_byte(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x87, 0x03);       // 64MB Top limit (0x07 for 128MB)
+    //pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x84, 0x3FFFFFF); // 64MB top limit (Set in xcodes)
 
     // Start of retail stuff
     // Set up the LPC bridge
@@ -66,6 +67,7 @@ void xbox_pci_init(void)
     h->type_0.base_address[0] = PCI_NIC_MEMORY_REGISTER_BASE_0;
     h->type_0.base_address[1] = PCI_NIC_IO_REGISTER_BASE_1 | PCI_COMMAND_IO;
     h->type_0.interrupt_line = XBOX_PIC_NIC_IRQ;
+    h->type_0.interrupt_pin = 0;
     pci_io_output_n(PCI_XBOX_SYSTEM_BUS, PCI_NIC_DEVICE_ID, PCI_NIC_FUNCTION_ID, sizeof(pci_mem), (uint8_t *)pci_mem);
 
     // USB0
@@ -73,6 +75,7 @@ void xbox_pci_init(void)
     h->command |= PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER;
     h->type_0.base_address[0] = PCI_USB0_MEMORY_REGISTER_BASE_0;
     h->type_0.interrupt_line = XBOX_PIC_USB0_IRQ;
+    h->type_0.interrupt_pin = 0;
     pci_io_output_n(PCI_XBOX_SYSTEM_BUS, PCI_USB0_DEVICE_ID, PCI_USB0_FUNCTION_ID, sizeof(pci_mem), (uint8_t *)pci_mem);
     pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_USB0_DEVICE_ID, PCI_USB0_FUNCTION_ID, 0x50, 0x0000000f); // Port Enable?
 
@@ -81,6 +84,7 @@ void xbox_pci_init(void)
     h->command |= PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER;
     h->type_0.base_address[0] = PCI_USB1_MEMORY_REGISTER_BASE_0;
     h->type_0.interrupt_line = XBOX_PIC_USB1_IRQ;
+    h->type_0.interrupt_pin = 0;
     pci_io_output_n(PCI_XBOX_SYSTEM_BUS, PCI_USB1_DEVICE_ID, PCI_USB1_FUNCTION_ID, sizeof(pci_mem), (uint8_t *)pci_mem);
     pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_USB1_DEVICE_ID, PCI_USB1_FUNCTION_ID, 0x50, 0x00000030);
 
@@ -91,6 +95,7 @@ void xbox_pci_init(void)
     h->type_0.base_address[1] = PCI_ACI_IO_REGISTER_BASE_1 | PCI_COMMAND_IO;
     h->type_0.base_address[2] = PCI_ACI_MEMORY_REGISTER_BASE_2;
     h->type_0.interrupt_line = XBOX_PIC_ACI_IRQ;
+    h->type_0.interrupt_pin = 0;
     pci_io_output_n(PCI_XBOX_SYSTEM_BUS, PCI_ACI_DEVICE_ID, PCI_ACI_FUNCTION_ID, sizeof(pci_mem), (uint8_t *)pci_mem);
 
     // APU
@@ -98,11 +103,12 @@ void xbox_pci_init(void)
     h->command |= PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER;
     h->type_0.base_address[0] = PCI_APU_MEMORY_REGISTER_BASE_0;
     h->type_0.interrupt_line = XBOX_PIC_APU_IRQ;
+    h->type_0.interrupt_pin = 0;
     pci_io_output_n(PCI_XBOX_SYSTEM_BUS, PCI_APU_DEVICE_ID, PCI_APU_FUNCTION_ID, sizeof(pci_mem), (uint8_t *)pci_mem);
 
     // ?
     value = pci_io_input_dword(PCI_XBOX_SYSTEM_BUS, PCI_LPCBRIDGE_DEVICE_ID, PCI_LPCBRIDGE_FUNCTION_ID, 0x8c);
-    value &= ~0xFBFFFFFF;
+    value &= 0xF3FFFFFF;
     value |= 0x08000000;
     pci_io_output_dword(PCI_XBOX_SYSTEM_BUS, PCI_LPCBRIDGE_DEVICE_ID, PCI_LPCBRIDGE_FUNCTION_ID, 0x8c, value);
 
@@ -134,6 +140,7 @@ void xbox_pci_init(void)
     h->command |= PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER;
     h->type_0.base_address[0] = PCI_GPU_MEMORY_REGISTER_BASE_0;
     h->type_0.interrupt_line = XBOX_PIC_GPU_IRQ;
+    h->type_0.interrupt_pin = 1;
     pci_mem[0x4C / 4] = 0x00000114;
     pci_io_output_n(PCI_XBOX_GPU_BUS, PCI_GPU_DEVICE_ID, PCI_GPU_FUNCTION_ID, sizeof(pci_mem), (uint8_t *)pci_mem);
 
@@ -144,7 +151,7 @@ void xbox_pci_init(void)
     io_output_word(PCI_LPCBRIDGE_IO_REGISTER_BASE_0 + 0x02, io_input_word((PCI_LPCBRIDGE_IO_REGISTER_BASE_0 + 0x02)) | 0x0001);
     io_output_word(PCI_LPCBRIDGE_IO_REGISTER_BASE_0 + 0x28, io_input_word((PCI_LPCBRIDGE_IO_REGISTER_BASE_0 + 0x28)) | 0x0001);
 
-    //?
+    // 64MB Top limit (0x07 for 128MB)
     pci_io_output_byte(PCI_XBOX_SYSTEM_BUS, PCI_HOSTBRIDGE_DEVICE_ID, PCI_HOSTBRIDGE_FUNCTION_ID, 0x87, 0x03);
 
     //?
