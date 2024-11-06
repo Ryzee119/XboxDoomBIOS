@@ -70,14 +70,8 @@ section .header6C
 section .header70 
     dd 0x0000000f
     dd 0x40004400
-
-%ifdef MCPXREVD5
-    dd 0x16ce0090
-    dd 0x00000dc0
-%else
-    dd 0x16ce0090
+    dd 0x16CE0090
     dd 0x00000000
-%endif
 
 section .xcodes
     %include '2bxcodes.nasm'
