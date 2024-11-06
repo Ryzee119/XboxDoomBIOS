@@ -182,8 +182,8 @@ void xbox_video_init(uint32_t mode_coding, xbox_framebuffer_format_t format, voi
     assert(pramdac_values != NULL);
     assert(prmcio_values != NULL);
 
-    xbox_gpu_output32(PFB, 0x200, 0x03070103);
-    xbox_gpu_output32(PFB, 0x204, 0x11448000);
+    //xbox_gpu_output32(PFB, 0x200, 0x03070103);
+    //xbox_gpu_output32(PFB, 0x204, 0x11448000);
 
     // XPRINTF("[GPU] Setting up display mode %08X\n", mode_coding);
 
