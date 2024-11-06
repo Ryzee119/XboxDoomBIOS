@@ -148,6 +148,17 @@ __attribute__((section(".boot_code"))) uint32_t boot_calculate_crc32(const uint8
 extern void __libc_init_array(void);
 void boot(void)
 {
+    xbox_pci_init();
+
+    extern int __uncompressed_data_crc;
+    extern int __uncompressed_data_size;
+    volatile void *_start = (void *)DECOMP_RAM_DESTINATION;
+    uint32_t crc32 = boot_calculate_crc32((uint8_t *)_start, __uncompressed_data_size);
+    if (crc32 != __uncompressed_data_crc) {
+        xbox_led_output(XLED_ORANGE, XLED_RED, XLED_ORANGE, XLED_RED);
+        while(1);
+    }
+
     // Calls functions defined with __attribute__((constructor))
     __libc_init_array();
 
@@ -157,21 +168,9 @@ void boot(void)
 
     xbox_serial_init();
 
-    extern int __uncompressed_data_crc;
-    extern int __uncompressed_data_size;
-
-    volatile void *_start = (void *)DECOMP_RAM_DESTINATION;
-    uint32_t crc32 = boot_calculate_crc32((uint8_t *)_start, __uncompressed_data_size);
-    if (crc32 != __uncompressed_data_crc) {
-        xbox_led_output(XLED_ORANGE, XLED_RED, XLED_ORANGE, XLED_RED);
-        while(1);
-    }
-
     cpu_disable_cache();
     cpu_update_microcode();
     cpu_enable_cache();
-
-    xbox_pci_init();
 
     // Enable the 8259 Interrupt Controllers (Master and Slave)
     // All IRQs initially masked except IRQ2 (To ensure PIC2 IRQs work)
