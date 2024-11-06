@@ -18,6 +18,8 @@ op_andorebp		EQU 0x10
 op_io_write		EQU 0x11
 op_io_read		EQU 0x12
 op_exit			EQU 0xEE
+op_unused1		EQU 0xF5
+op_unused2		EQU 0x80
 
 %macro xc_opcode 3
 	db %1
@@ -60,6 +62,8 @@ op_exit			EQU 0xEE
 	xc_opcode op_exit, 0, 0
 %endmacro
 
+xc_opcode op_unused1, 0x00081000, 1
+xc_opcode op_unused2, 0x00000114, 0x228
 xc_pci_write 0x80000884, 0x00008001
 xc_pci_write 0x80000810, 0x00008001
 xc_pci_write 0x80000804, 0x00000003
@@ -299,6 +303,7 @@ xc_jmp loc_7BE
 loc_7BE:
 xc_mem_write 0x0F100200, 0x03070103
 xc_mem_write 0x0F100204, 0x11448000
+xc_mem_write 0x0F100200, 0x03070003
 xc_pci_write 0x8000103C, 0x00000000         ; memtest type clear
 xc_io_write 0x0000C000, 0x00000010          ; smbus status set ; clear
 xc_io_write 0x0000C004, 0x00000020          ; smbus address set ; PIC
@@ -318,6 +323,18 @@ xc_jne 0x00000010, loc_83C
 xc_io_write 0x0000C000, 0x00000010          ; smbus status set ; clear
 xc_pci_write 0x8000F020, 0xFDF0FD00
 xc_pci_write 0x80010010, 0xFD000000         ; set nv2a register base address
+
+xc_mem_write 0xFD001220, 0
+xc_mem_write 0xFD00122C, 0x64646464
+xc_mem_write 0xFD00123C, 0x54545454
+xc_mem_write 0xFD001230, 0xF8F8F8F8
+xc_mem_write 0xFD001240, 0xF8F8F8F8
+xc_mem_write 0xFD001234, 0x87878787
+xc_mem_write 0xFD001244, 0x65656565
+xc_mem_write 0xFD001238, 0xbbbbbbbb
+xc_mem_write 0xFD001248, 0x96969696
+xc_mem_write 0xFD001214, 0x88888888
+xc_mem_write 0xFD001218, 0x00000000
 
 ; VISOR trick. Due to rollover bug at 0xFFFFFFFF, use xcodes to push a jmp to our code in ROM at 0xfffc1000
 ; mov eax, 0xfffc1000 (This is our code entry in ROM)
