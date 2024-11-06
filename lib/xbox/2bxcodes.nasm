@@ -323,7 +323,7 @@ xc_pci_write 0x80010010, 0xFD000000         ; set nv2a register base address
 ; mov eax, 0xfffc1000 (This is our code entry in ROM)
 ; jmp eax
 ; nop
-xc_mem_write 0x00000000, 0xfc1000B8
+xc_mem_write 0x00000000, 0xfc2000B8
 xc_mem_write 0x00000004, 0x90e0ffff
 
 xc_opcode op_exit, 0x806, 0

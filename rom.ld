@@ -1,5 +1,5 @@
 STACK_SIZE = 32K;
-ROM_VISOR_ENTRY_OFFSET = 0x00001000; /* Set by 2bxcodes.nasm */
+ROM_VISOR_ENTRY_OFFSET = 0x00002000; /* Set by 2bxcodes.nasm */
 RAM_ENTRY_OFFSET = 0x00100000;
 /*FFF40000*/
 MEMORY {
@@ -19,7 +19,7 @@ SECTIONS {
         KEEP(*(.header70))
         . = 0x80;
         KEEP(*(.xcodes))
-        . = 0x1000;
+        . = 0x2000;
     } > ROM
 
     .visor_entry : {
@@ -123,7 +123,8 @@ SECTIONS {
     __boot_code_lma = LOADADDR(.boot_code);
     __boot_code_size = SIZEOF(.boot_code);
 
-    /* first 4 bytes are the size of original uncompressed data */
+    /* The first 4 bytes is the CRC32 of the uncompressed data */
+    /* Then it's the size of original uncompressed data in bytes */
     __uncompressed_data_crc = LOADADDR(.compressed);
     __uncompressed_data_size = LOADADDR(.compressed) + 4;
     __compressed_data_lma = LOADADDR(.compressed) + 8;
