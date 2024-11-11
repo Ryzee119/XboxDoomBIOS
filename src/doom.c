@@ -132,6 +132,14 @@ int doom_entry(const char *wad_path)
     printf_ts("[DOOM] Initializing...\n");
 
     doom_init(argc, (char **)args, 0);
+
+    if (gamemode == indetermined) {
+        printf_ts("[DOOM] Could not find suitable WAD files\n");
+        while(1) {
+            portYIELD();
+        }
+    }
+
     doom_initd = 1;
 
     doom_logic_mutex = xSemaphoreCreateMutex();
