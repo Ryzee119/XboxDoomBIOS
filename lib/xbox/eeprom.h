@@ -82,7 +82,7 @@ typedef struct xbox_eeprom
 #define XBOX_EEPROM_AUDIO_SETTINGS_SURROUND_AC3  0x00010000
 #define XBOX_EEPROM_AUDIO_SETTINGS_SURROUND_DTS3 0x00020000
 
-xbox_eeprom_t *xbox_eeprom_get();
+const xbox_eeprom_t *xbox_eeprom_get();
 int16_t xbox_eeprom_set(xbox_eeprom_t *eeprom);
 
 #endif

@@ -21,7 +21,7 @@ static int16_t xbox_eeprom_read()
     return total_read;
 }
 
-xbox_eeprom_t *xbox_eeprom_get()
+const xbox_eeprom_t *xbox_eeprom_get()
 {
     if (cached_eeprom == 0) {
         if (xbox_eeprom_read() == sizeof(xbox_eeprom_t)) {
