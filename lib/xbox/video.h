@@ -1,8 +1,8 @@
 #ifndef VIDEO_H
 #define VIDEO_H
 
-#include "video.h"
 #include "smc.h"
+#include "video.h"
 #include "xbox.h"
 
 typedef struct display_information
@@ -26,6 +26,10 @@ typedef struct display_information
     uint16_t hsync_end;
     uint16_t hvalid_start;
     uint16_t hvalid_end;
+    uint8_t current_encoder_address;
+    uint32_t current_output_mode_coding;
+    uint8_t current_flicker_level;
+    uint8_t current_soften_level;
 } display_information_t;
 
 enum
@@ -45,10 +49,8 @@ enum
 };
 typedef uint8_t xbox_framebuffer_format_t;
 
-#define XBOX_VIDEO_RETURN_SUCCESS 0
-#define XBOX_VIDEO_RETURN_ERROR   -1
-
-typedef enum xbox_video_region {
+typedef enum xbox_video_region
+{
     XBOX_VIDEO_REGION_NTSCM = 0x00000100,
     XBOX_VIDEO_REGION_NTSCJ = 0x00000200,
     XBOX_VIDEO_REGION_PAL   = 0x00000300,
@@ -64,8 +66,9 @@ typedef struct _VIDEO_MODE_SETTING
     xbox_av_pack_t avpack;
 } VIDEO_MODE_SETTING;
 
-#define XBOX_VIDEO_MAKE_COLOR_RGB565(r, g, b)       (((r & 0x1F) << 11) | ((g & 0x3F) << 5) | (b & 0x1F))
-#define XBOX_VIDEO_MAKE_COLOUR_ARGB8888(a, r, g, b) (((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF))
+#define XBOX_VIDEO_MAKE_COLOR_RGB565(r, g, b) (((r & 0x1F) << 11) | ((g & 0x3F) << 5) | (b & 0x1F))
+#define XBOX_VIDEO_MAKE_COLOUR_ARGB8888(a, r, g, b)                                                                    \
+    (((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF))
 
 void xbox_video_do_vblank_irq_one_shot(void (*callback)(void));
 uint32_t xbox_video_get_suitable_mode_coding(uint32_t width, uint32_t height);

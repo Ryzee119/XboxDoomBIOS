@@ -39,7 +39,7 @@
 // See MTRRs in 2bmain.nasm
 #define XBOX_GET_WRITE_COMBINE_PTR(ptr) ((void *)((uintptr_t)(ptr) | 0xF0000000))
 
-#define XDEBUG
+//#define XDEBUG
 #ifdef XDEBUG
 #define XPRINTF(...) printf(__VA_ARGS__)
 #else
