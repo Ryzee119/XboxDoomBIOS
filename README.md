@@ -19,6 +19,7 @@ https://github.com/user-attachments/assets/ad5efb7f-79c7-41e3-9849-dc8d458fa6fb
 
 ## Compile
 ```
+git clone --recursive https://github.com/Ryzee119/XboxDoomBIOS.git
 sudo apt install git build-essential clang nasm cmake python3 python3-pip
 pip install objutils lz4 pyelftools
 mkdir build && cd build
