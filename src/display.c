@@ -7,8 +7,8 @@ static uint32_t cursor_y = MARGIN;
 void apply_all_video_modes(void *fb);
 void display_init()
 {
-    int width = 1280;
-    int height = 720;
+    int width = 640;
+    int height = 480;
     int bpp = 4;
 
     uint32_t mode_coding = xbox_video_get_suitable_mode_coding(width, height);

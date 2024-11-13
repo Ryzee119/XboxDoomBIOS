@@ -114,6 +114,52 @@ static void vblank_callback()
     xSemaphoreGiveFromISR(doom_vblank_semaphore, NULL);
 }
 
+void scale_doom(const uint8_t *input, int inputWidth, int inputHeight, uint32_t *output, int outputWidth,
+                int outputHeight)
+{
+    float scaleX = (float)outputWidth / inputWidth;
+    float scaleY = (float)outputHeight / (inputHeight);
+
+    float scale_y = (scaleX < scaleY) ? scaleX : scaleY;
+    float scale_x = scale_y;
+
+    int scaledWidth = (int)(inputWidth * scale_x);
+    int scaledHeight = (int)(inputHeight * scale_y);
+
+    int xOffset = (outputWidth - scaledWidth) / 2;
+    int yOffset = (outputHeight - scaledHeight) / 2;
+
+    int line_start = yOffset * outputWidth + xOffset;
+    for (int y = 0; y < scaledHeight; ++y) {
+        int srcY = (int)(y / scale_y);
+
+        for (int x = 0; x < scaledWidth; ++x) {
+            int srcX = (int)(x / scale_x);
+
+            int doom_pixel = srcY * inputWidth + srcX;
+            uint32_t index = input[(int)doom_pixel] * 3;
+            uint32_t argb = 0xff000000 | (screen_palette[index] << 16) | (screen_palette[index + 1] << 8) |
+                            screen_palette[index + 2];
+
+            int oldX = srcX;
+            int pixel = line_start + x;
+            do {
+                output[pixel++] = argb;
+                srcX = (int)(x++ / scale_x);
+            } while (srcX == oldX && x < scaledWidth);
+            x--;
+        }
+
+        int oldY = srcY;
+        do {
+            srcY = (int)(y++ / scale_y);
+            memcpy(&output[line_start + outputWidth], &output[line_start], scaledWidth * 4);
+            line_start += outputWidth;
+        } while (srcY == oldY && (y + 1) < scaledHeight);
+        y--;
+    }
+}
+
 int doom_entry(const char *wad_path)
 {
     const char *args[] = {"doom"};
@@ -122,6 +168,8 @@ int doom_entry(const char *wad_path)
     strcpy(wad_dir, wad_path);
 
     uint16_t refresh_rate = xbox_video_get_display_information()->refresh_rate;
+    uint32_t output_width = xbox_video_get_display_information()->width;
+    uint32_t output_height = xbox_video_get_display_information()->height;
 
     doom_set_print(dooom_printf);
     doom_set_malloc(dooom_malloc, dooom_free);
@@ -135,7 +183,7 @@ int doom_entry(const char *wad_path)
 
     if (gamemode == indetermined) {
         printf_ts("[DOOM] Could not find suitable WAD files\n");
-        while(1) {
+        while (1) {
             portYIELD();
         }
     }
@@ -148,9 +196,9 @@ int doom_entry(const char *wad_path)
                 NULL);
 
     // Create our framebuffer output buffer
-    uint32_t *draw_buffer = aligned_alloc(0x1000, 640 * 480 * 4);
-    uint32_t *gpu_buffer1 = aligned_alloc(0x1000, 640 * 480 * 4);
-    uint32_t *gpu_buffer2 = aligned_alloc(0x1000, 640 * 480 * 4);
+    uint32_t *draw_buffer = aligned_alloc(0x1000, output_width * output_height * 4);
+    uint32_t *gpu_buffer1 = aligned_alloc(0x1000, output_width * output_height * 4);
+    uint32_t *gpu_buffer2 = aligned_alloc(0x1000, output_width * output_height * 4);
     gpu_buffer1 = (uint32_t *)(((uint32_t)gpu_buffer1 + 0xFFF) & ~0xFFF);
     gpu_buffer2 = (uint32_t *)(((uint32_t)gpu_buffer2 + 0xFFF) & ~0xFFF);
 
@@ -167,54 +215,9 @@ int doom_entry(const char *wad_path)
         doom_update();
         xSemaphoreGive(doom_logic_mutex);
 
-        // Get doom framebuffer and palette.
-        // The doom framebuffer is palette indexed at 320x200.
-        // We scale by 2 so it is 640x400 and apply the palette to convert to ARGB8888.
-        // We also scale the height by 1.2 to 480.
-        extern unsigned char screen_palette[256 * 3];
-        uint8_t *indexed_framebuffer = (uint8_t *)doom_get_framebuffer(1);
-
         // Prepare our output buffer
-
-        uint32_t *draw_buffer_cursor = draw_buffer;
-
-        uint32_t line = 0, flipflop = 0;
-        const uint32_t FINAL_WIDTH = SCREENWIDTH * 2;
-
-        for (int pixel = 0; pixel < SCREENWIDTH * SCREENHEIGHT; pixel++) {
-            uint32_t index = indexed_framebuffer[pixel] * 3;
-
-            uint32_t argb = 0xff000000 | (screen_palette[index] << 16) | (screen_palette[index + 1] << 8) |
-                            screen_palette[index + 2];
-
-            // Double up the pixel horizontally
-            *draw_buffer_cursor++ = argb;
-            *draw_buffer_cursor++ = argb;
-
-            // Double up the lines
-            if ((pixel + 1) % SCREENWIDTH == 0) {
-                memcpy(draw_buffer_cursor, draw_buffer_cursor - FINAL_WIDTH, FINAL_WIDTH * 4);
-                draw_buffer_cursor += FINAL_WIDTH;
-
-                // On original DOOM, each pixel was 20% higher, however we cant easily do this on a 640x480 display
-                // Poor man's way is to redraw every 5th line.
-                // As we are doubling anyway, ideally we drawing on line on row 2.5 and one on 5, but we can't do that.
-                // instead we flip flop between line 2 and 3 (~2.5) and 5.
-                if (line == ((flipflop) ? 2 : 3)) {
-                    memcpy(draw_buffer_cursor, draw_buffer_cursor - FINAL_WIDTH, FINAL_WIDTH * 4);
-                    draw_buffer_cursor += FINAL_WIDTH;
-                }
-
-                if (line == 5) {
-                    memcpy(draw_buffer_cursor, draw_buffer_cursor - FINAL_WIDTH, FINAL_WIDTH * 4);
-                    draw_buffer_cursor += FINAL_WIDTH;
-                    line = 0;
-                    flipflop ^= 1;
-                }
-
-                line++;
-            }
-        }
+        scale_doom((uint8_t *)doom_get_framebuffer(1), SCREENWIDTH, SCREENHEIGHT, draw_buffer, output_width,
+                   output_height);
 
 #if (1)
         // Draw FPS
@@ -242,7 +245,7 @@ int doom_entry(const char *wad_path)
 
         // Blit draw buffer to gpu buffer
         void *gpu_backbuffer = screen_buffer[backbuffer_index ^= 1];
-        memcpy(gpu_backbuffer, draw_buffer, 640 * 480 * 4);
+        memcpy(gpu_backbuffer, draw_buffer, output_width * output_height * 4);
         xbox_video_flush_cache();
 
         xbox_video_do_vblank_irq_one_shot(vblank_callback);
