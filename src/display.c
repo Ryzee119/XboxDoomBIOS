@@ -4,27 +4,34 @@ static const uint8_t MARGIN = 20;
 static uint32_t cursor_x = MARGIN;
 static uint32_t cursor_y = MARGIN;
 
+void apply_all_video_modes(void *fb);
 void display_init()
 {
-    const int width = 640;
-    const int height = 480;
-    const int bpp = 4;
+    int width = 1280;
+    int height = 720;
+    int bpp = 4;
 
     uint32_t mode_coding = xbox_video_get_suitable_mode_coding(width, height);
 
-    // Invalid input, fallback to 640x480 NTSCM 60Hz to hopefully show something
+    // Invalid input, fallback to 640x480 to hopefully show something
     if (mode_coding == 0) {
-        printf_ts("[DISPLAY] Invalid mode, falling back to 640x480 NTSCM 60Hz\n");
-        mode_coding = 0x04010101;
+        // This should always be valid
+        printf_ts("[DISPLAY] Failed to find a suitable mode, trying 640x480\n");
+        width = 640;
+        height = 480;
+        mode_coding = xbox_video_get_suitable_mode_coding(width, height);
+        if (mode_coding == 0) {
+            mode_coding = 0x04010101; // Just pick one to hopefully show something
+            printf_ts("[DISPLAY] Failed to find a suitable mode, forcing 640x480\n");
+        }
     }
 
     uint8_t *fb = aligned_alloc(0x1000, width * height * bpp);
     fb = XBOX_GET_WRITE_COMBINE_PTR(fb);
     memset(fb, 0x00, width * height * bpp);
     xbox_video_flush_cache();
-    xbox_video_init(mode_coding, (bpp == 2) ? RGB565 : ARGB8888, fb);
-
     printf_ts("[DISPLAY] Using mode %08X\n", mode_coding);
+    xbox_video_init(mode_coding, (bpp == 2) ? RGB565 : ARGB8888, fb);
 }
 
 void display_clear()
