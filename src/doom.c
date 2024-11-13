@@ -234,7 +234,7 @@ int doom_entry(const char *wad_path)
         uint32_t x = 20;
         char fps_buffer[16];
         time = XBOX_MAX(time, 1);
-        snprintf(fps_buffer, sizeof(fps_buffer), "FPS: %d\n", 10000 / time);
+        snprintf(fps_buffer, sizeof(fps_buffer), "FPS: %5d\n", 10000 / time);
         char *c = fps_buffer;
         while (*c) {
             display_write_char_ex(*c, x, 20, (void *)p);
