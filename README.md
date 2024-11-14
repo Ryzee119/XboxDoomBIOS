@@ -17,11 +17,12 @@ https://github.com/user-attachments/assets/ad5efb7f-79c7-41e3-9849-dc8d458fa6fb
 * Place at `E:/doom/doom1.wad`.
 * Flash bios to your modchip of choice and run.
 
-## Compile
+## Compile (Ubuntu/WSL2)
 ```
-git clone --recursive https://github.com/Ryzee119/XboxDoomBIOS.git
-sudo apt install git build-essential clang nasm cmake python3 python3-pip
+sudo apt install git build-essential clang nasm cmake python3 python3-pip git
 pip install objutils lz4 pyelftools
+git clone --recursive https://github.com/Ryzee119/XboxDoomBIOS.git
+cd XboxDoomBIOS
 mkdir build && cd build
 cmake ..
 cmake --build .
