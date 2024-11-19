@@ -11,6 +11,11 @@ void display_init()
     int height = 480;
     int bpp = 4;
 
+    const xbox_eeprom_t *eeprom = xbox_eeprom_get();
+    if (eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_WIDESCREEN) {
+        width = 720;
+    }
+
     uint32_t mode_coding = xbox_video_get_suitable_mode_coding(width, height);
 
     // Invalid input, fallback to 640x480 to hopefully show something
@@ -28,6 +33,14 @@ void display_init()
 
     uint8_t *fb = aligned_alloc(0x1000, width * height * bpp);
     fb = XBOX_GET_WRITE_COMBINE_PTR(fb);
+
+#if(0)
+    apply_all_video_modes(fb);
+    while(1) {
+        printf("DONE\n");
+        vTaskDelay(5000);
+    }
+#endif
     memset(fb, 0x00, width * height * bpp);
     xbox_video_flush_cache();
     printf_ts("[DISPLAY] Using mode %08X\n", mode_coding);

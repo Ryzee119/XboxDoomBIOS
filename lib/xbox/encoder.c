@@ -129,14 +129,15 @@ void xbox_encoder_configure(uint32_t mode_coding, display_information_t *display
     const uint16_t height = display_info->vvalid_end - display_info->vvalid_start + 1;
 
     const uint8_t pramdac_index = ((mode_coding & 0x00FF0000) >> 16);
-    const uint8_t is_ed = (mode_coding & 0x80000000) ? 1 : 0; // Enhanced definition (480p or greater)
-    const uint8_t is_hd = pramdac_index >= 0x0A;              // High definition (720p, 1080i)..
+    const uint8_t is_ed =
+        (mode_coding & XBOX_VIDEO_MODE_CODING_HDTV_MASK) ? 1 : 0; // Enhanced definition (480p or greater)
+    const uint8_t is_hd = pramdac_index >= 0x0A;                  // High definition (720p, 1080i)..
 
     const uint8_t is_hd_interlaced = (height == 1080); // Surely a better way to check this
-    const uint8_t is_sd_pal50 = (mode_coding & 0x40000000) ? 1 : 0;
+    const uint8_t is_sd_pal50 = (mode_coding & XBOX_VIDEO_MODE_CODING_SDPAL50_MASK) ? 1 : 0;
     const uint8_t is_sd_pal60 = ((mode_settings->video_region == XBOX_VIDEO_REGION_PAL) && is_sd_pal50 == 0) ? 1 : 0;
     const uint8_t is_sd_ntscj = (mode_settings->video_region == XBOX_VIDEO_REGION_NTSCJ) ? 1 : 0;
-    const uint8_t is_sd_scart = (mode_coding & 0x20000000) ? 1 : 0;
+    const uint8_t is_sd_scart = (mode_coding & XBOX_VIDEO_MODE_CODING_SCART_MASK) ? 1 : 0;
     const uint8_t is_sd_yuv = (mode_coding == 0x48030314) | (mode_coding == 0x48040415) | (mode_coding == 0x08010119) |
                               (mode_coding == 0x0802021a) | (mode_coding == 0x0801010d) |
                               (mode_coding == 0x0802020e); // Surely a better way to check this
@@ -201,15 +202,16 @@ void xbox_encoder_configure(uint32_t mode_coding, display_information_t *display
             // Enable SCART
             if (is_sd_scart) {
                 smbus_input_dword(current_encoder_address, 0x01, &temp);
-                smbus_output_dword(current_encoder_address, 0x01, (temp & 0xfcffffff) | 0xc00008);
+                smbus_output_dword(current_encoder_address, 0x01, temp & 0xFCFFFFFF | 0xC00008);
+
                 smbus_input_dword(current_encoder_address, 0x60, &temp);
-                smbus_output_dword(current_encoder_address, 0x60, temp & 0xfeffffff);
+                smbus_output_dword(current_encoder_address, 0x60, temp & 0xFEFFFFFF);
                 smbus_output_dword(current_encoder_address, 0x58, 0x00000000);
             }
 
             // Some kind of HD mode setup?
-            if (mode_coding & 0xC0000000) {
-                if ((mode_coding & 0xC0000000) == 0x80000000) {
+            if (mode_coding & XBOX_VIDEO_MODE_CODING_OUTPUT_MODE_MASK) {
+                if ((mode_coding & XBOX_VIDEO_MODE_CODING_OUTPUT_MODE_MASK) == XBOX_VIDEO_MODE_CODING_HDTV_MASK) {
                     smbus_output_dword(current_encoder_address, 0x07, 0x00000000);
                 }
                 smbus_output_dword(current_encoder_address, 0x09, 0x00000000);
@@ -223,6 +225,34 @@ void xbox_encoder_configure(uint32_t mode_coding, display_information_t *display
             smbus_output_dword(current_encoder_address, 0x0C, 0x0000000F);
             smbus_output_dword(current_encoder_address, 0x0D, 0x00000000);
             smbus_output_dword(current_encoder_address, 0x0E, 0x00000001);
+
+            // ?
+            if (!is_ed) {
+                smbus_input_dword(current_encoder_address, 0x60, &temp);
+                smbus_output_dword(current_encoder_address, 0x60, temp);
+
+                uint32_t values_525[] = {0x00C8CA69, 0x0104D057, 0x011CD051, 0x0144D047, 0x015CD041, 0x01A4CA32};
+                uint32_t values_480[] = {0x00907024, 0x00907024, 0x00907024, 0x00907024, 0x00907024, 0x00907024};
+                uint32_t values_scart_525[] = {0x00C8CA69, 0x0104D057, 0x011CD051, 0x0144D047, 0x015CD041, 0x01A4CA32};
+                uint32_t *values = values_525;
+                if ((mode_coding & XBOX_VIDEO_MODE_CODING_SCART_MASK) &&
+                    (mode_coding & XBOX_VIDEO_MODE_CODING_SDPAL50_MASK)) {
+                    values = values_scart_525;
+                } else if ((mode_coding & XBOX_VIDEO_MODE_CODING_OUTPUT_MODE_MASK) == 0) {
+                    values = values_480;
+                }
+                smbus_output_dword(current_encoder_address, 0x61, values[0]);
+                smbus_output_dword(current_encoder_address, 0x62, values[1]);
+                smbus_output_dword(current_encoder_address, 0x63, values[2]);
+                smbus_output_dword(current_encoder_address, 0x64, values[3]);
+                smbus_output_dword(current_encoder_address, 0x65, values[4]);
+                smbus_output_dword(current_encoder_address, 0x66, values[5]);
+            }
+
+            if (is_sd_scart) {
+                smbus_input_dword(current_encoder_address, 0x60, &temp);
+                smbus_output_dword(current_encoder_address, 0x60, temp);
+            }
 
             break;
         case XBOX_SMBUS_ADDRESS_ENCODER_CONEXANT: {

@@ -53,7 +53,7 @@ typedef enum xbox_video_region
 {
     XBOX_VIDEO_REGION_NTSCM = 0x00000100,
     XBOX_VIDEO_REGION_NTSCJ = 0x00000200,
-    XBOX_VIDEO_REGION_PAL   = 0x00000300,
+    XBOX_VIDEO_REGION_PAL = 0x00000300,
 } xbox_video_region_t;
 
 typedef struct _VIDEO_MODE_SETTING
@@ -69,6 +69,23 @@ typedef struct _VIDEO_MODE_SETTING
 #define XBOX_VIDEO_MAKE_COLOR_RGB565(r, g, b) (((r & 0x1F) << 11) | ((g & 0x3F) << 5) | (b & 0x1F))
 #define XBOX_VIDEO_MAKE_COLOUR_ARGB8888(a, r, g, b)                                                                    \
     (((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF))
+
+#define XBOX_VIDEO_MODE_CODING_OUTPUT_MODE_MASK 0xC0000000
+#define XBOX_VIDEO_MODE_CODING_HDTV_MASK        0x80000000
+#define XBOX_VIDEO_MODE_CODING_SDPAL50_MASK     0x40000000
+
+#define XBOX_VIDE_MODE_CODING_OUTPUT_FLAG_MASK 0x30000000
+#define XBOX_VIDEO_MODE_CODING_SCART_MASK      0x20000000
+#define XBOX_VIDEO_MODE_CODING_WSS_MASK        0x10000000
+
+#define XBOX_VIDEO_MODE_CODING_PRAMDAC_INDEX_MASK  0x00FF0000
+#define XBOX_VIDEO_MODE_CODING_PRAMDAC_INDEX_SHIFT 16
+
+#define XBOX_VIDEO_MODE_CODING_UNK0_MASK  0x0F000000
+#define XBOX_VIDEO_MODE_CODING_UNK0_SHIFT 24
+
+#define XBOX_VIDEO_MODE_CODING_PCRTC_MASK  0x0000FF00
+#define XBOX_VIDEO_MODE_CODING_PCRTC_SHIFT 8
 
 void xbox_video_do_vblank_irq_one_shot(void (*callback)(void));
 uint32_t xbox_video_get_suitable_mode_coding(uint32_t width, uint32_t height);

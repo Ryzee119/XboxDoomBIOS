@@ -378,7 +378,7 @@ void xbox_video_init(uint32_t mode_coding, xbox_framebuffer_format_t format, voi
     }
 
     //? Seen only on these modes (SCART)
-    if (mode_coding & 0x20000000) {
+    if (mode_coding & XBOX_VIDEO_MODE_CODING_SCART_MASK) {
         xbox_gpu_output32(PRAMDAC, 0x630, 0);
         xbox_gpu_output32(PRAMDAC, 0x8C4, 0);
         xbox_gpu_output32(PRAMDAC, 0x84C, 0);
@@ -459,8 +459,8 @@ void xbox_video_init(uint32_t mode_coding, xbox_framebuffer_format_t format, voi
     xbox_gpu_output32(PCRTC, 0x800, (uint32_t)frame_buffer);
 
     if (current_encoder_address == XBOX_SMBUS_ADDRESS_ENCODER_CONEXANT) {
-        if ((mode_coding & 0x80000000) == 0) {
-            const uint8_t is_sd_pal50 = (mode_coding & 0x40000000) ? 1 : 0;
+        if ((mode_coding & XBOX_VIDEO_MODE_CODING_HDTV_MASK) == 0) {
+            const uint8_t is_sd_pal50 = (mode_coding & XBOX_VIDEO_MODE_CODING_SDPAL50_MASK) ? 1 : 0;
             smbus_output_byte(current_encoder_address, 0x60, (is_sd_pal50) ? 0xC8 : 0xC0);
             smbus_output_byte(current_encoder_address, 0x62, 0x00);
             smbus_output_byte(current_encoder_address, 0x64, (is_sd_pal50) ? 0x00 : 0x18);
@@ -468,6 +468,16 @@ void xbox_video_init(uint32_t mode_coding, xbox_framebuffer_format_t format, voi
     } else if (current_encoder_address == XBOX_SMBUS_ADDRESS_ENCODER_FOCUS) {
 
     } else if (current_encoder_address == XBOX_SMBUS_ADDRESS_ENCODER_XCALIBUR) {
+        if (!(mode_coding & XBOX_VIDEO_MODE_CODING_HDTV_MASK)) {
+            temp = 0x03000000;
+            const uint8_t is_sd_pal50 = (mode_coding & XBOX_VIDEO_MODE_CODING_SDPAL50_MASK) ? 1 : 0;
+            if (is_sd_pal50) {
+                temp |= 0x000010;
+            } else {
+                temp |= 0x030000;
+            }
+            smbus_output_dword(current_encoder_address, 0x07, temp);
+        }
     }
 
     // Set default flick and soften filters
@@ -571,7 +581,7 @@ uint8_t xbox_video_set_option(xbox_video_option_t option, uint32_t *parameter)
 
                 // Encoder level
                 if (current_encoder_address == XBOX_SMBUS_ADDRESS_ENCODER_XCALIBUR) {
-                    temp = (current_output_mode_coding >> 18) & 0x0F;
+                    temp = (current_output_mode_coding >> 24) & 0x0F;
                     smbus_output_dword(current_encoder_address, 0x04, temp);
 
                 } else if (current_encoder_address == XBOX_SMBUS_ADDRESS_ENCODER_FOCUS) {
@@ -761,7 +771,7 @@ uint32_t xbox_video_get_suitable_mode_coding(uint32_t width, uint32_t height)
 
         // Should we try HD modes?
         if (!is_pal && avpack == XBOX_AV_PACK_HDTV) {
-            const uint32_t is_hd = video_modes[i].mode & 0x80000000;
+            const uint32_t is_hd = video_modes[i].mode & XBOX_VIDEO_MODE_CODING_HDTV_MASK;
 
             // If we request 640x480 on HD avpack we prefer 480p over 480i
             if (height == 480 && allow_480p && !is_hd) {
@@ -789,6 +799,9 @@ uint32_t xbox_video_get_suitable_mode_coding(uint32_t width, uint32_t height)
 
 void apply_all_video_modes(void *fb)
 {
+    xbox_gpu_input08(PRMCIO, 0x3DA);
+    smbus_output_dword(XBOX_SMBUS_ADDRESS_ENCODER_XCALIBUR, 0x04, 0x00000008);
+
     for (int i = 0; i < XBOX_ARRAY_SIZE(video_modes); i++) {
         XPRINTF("\r\n%d Mode: %08x, Width: %d, Height: %d, Refresh: %d, BPP: 32\r", i, video_modes[i].mode,
                 video_modes[i].width, video_modes[i].height, video_modes[i].refresh);
