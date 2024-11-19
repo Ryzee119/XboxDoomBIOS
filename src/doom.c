@@ -114,49 +114,80 @@ static void vblank_callback()
     xSemaphoreGiveFromISR(doom_vblank_semaphore, NULL);
 }
 
-void scale_doom(const uint8_t *input, int inputWidth, int inputHeight, uint32_t *output, int outputWidth,
-                int outputHeight)
+void scale_doom(const uint8_t *input, int input_width, int input_height, uint32_t *output_fb, int output_width,
+                int output_height)
 {
-    float scaleX = (float)outputWidth / inputWidth;
-    float scaleY = (float)outputHeight / (inputHeight);
 
-    float scale_y = (scaleX < scaleY) ? scaleX : scaleY;
-    float scale_x = scale_y;
+#define FIXED_POINT_SHIFT 16
 
-    int scaledWidth = (int)(inputWidth * scale_x);
-    int scaledHeight = (int)(inputHeight * scale_y);
+    // Stretch the input height by 20%
+    int adjusted_input_height = input_height + (input_height * 20 / 100);
 
-    int xOffset = (outputWidth - scaledWidth) / 2;
-    int yOffset = (outputHeight - scaledHeight) / 2;
+    // Calculate scale factors based on the adjusted input height
+    int scale_factor_x = (input_width << FIXED_POINT_SHIFT) / output_width;
+    int scale_factor_y = (adjusted_input_height << FIXED_POINT_SHIFT) / output_height;
 
-    int line_start = yOffset * outputWidth + xOffset;
-    for (int y = 0; y < scaledHeight; ++y) {
-        int srcY = (int)(y / scale_y);
+    int scale_factor;
 
-        for (int x = 0; x < scaledWidth; ++x) {
-            int srcX = (int)(x / scale_x);
+    // Determine the appropriate scale factor to maintain aspect ratio
+    if (scale_factor_x > scale_factor_y) {
+        scale_factor = scale_factor_x;
+    } else {
+        scale_factor = scale_factor_y;
+    }
 
-            int doom_pixel = srcY * inputWidth + srcX;
+    int scaled_width = (input_width << FIXED_POINT_SHIFT) / scale_factor;
+    int scaled_height = (adjusted_input_height << FIXED_POINT_SHIFT) / scale_factor;
+
+    int offset_x = (output_width - scaled_width) >> 1;
+    int offset_y = (output_height - scaled_height) >> 1;
+
+    // Scale and center the image
+    for (int y = 0; y < output_height; y++) {
+        if (y >= scaled_height) {
+            continue;
+        }
+
+        int src_y = (y * scale_factor) >> FIXED_POINT_SHIFT;
+
+        // Ensure src_y maps correctly to the original image coordinates within bounds
+        src_y = (src_y * 100) / 120; // Revert the 20% stretch to map to original
+
+        for (int x = 0; x < output_width; x++) {
+
+            if (x >= scaled_width || y >= scaled_height) {
+                continue;
+            }
+
+            int src_x = (x * scale_factor) >> FIXED_POINT_SHIFT;
+
+            int doom_pixel = src_y * input_width + src_x;
             uint32_t index = input[(int)doom_pixel] * 3;
             uint32_t argb = 0xff000000 | (screen_palette[index] << 16) | (screen_palette[index + 1] << 8) |
                             screen_palette[index + 2];
 
-            int oldX = srcX;
-            int pixel = line_start + x;
+            // Blit X columns if they are just identical to the current column to save recalculation
+            int src_x1 = src_x;
+            int x1 = 0;
             do {
-                output[pixel++] = argb;
-                srcX = (int)(x++ / scale_x);
-            } while (srcX == oldX && x < scaledWidth);
-            x--;
+                output_fb[((y + offset_y) * output_width) + ((x + x1) + offset_x)] = argb;
+                src_x1 = ((x + x1++) * scale_factor) >> FIXED_POINT_SHIFT;
+            } while (src_x1 == src_x);
+            x += x1 - 1;
         }
 
-        int oldY = srcY;
+        // Blit Y rows if they are just identical to the current row to save recalculation
+        int src_y1 = src_y;
+        int y1 = 0;
         do {
-            srcY = (int)(y++ / scale_y);
-            memcpy(&output[line_start + outputWidth], &output[line_start], scaledWidth * 4);
-            line_start += outputWidth;
-        } while (srcY == oldY && (y + 1) < scaledHeight);
-        y--;
+            y1++;
+            src_y1 = ((((y + y1) * scale_factor) >> FIXED_POINT_SHIFT) * 100) / 120;
+            if (src_y1 == src_y) {
+                memcpy(&output_fb[((y + y1 + offset_y) * output_width) + offset_x],
+                       &output_fb[((y + offset_y) * output_width) + offset_x], scaled_width * 4);
+            }
+        } while (src_y1 == src_y);
+        y += y1 - 1;
     }
 }
 
