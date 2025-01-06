@@ -5,12 +5,6 @@
 
 https://github.com/user-attachments/assets/ad5efb7f-79c7-41e3-9849-dc8d458fa6fb
 
-## Todo
-* Fix conexant video encoder issues
-* Fix fatx writes? Seems to work on xemu but not hw
-* Test Xcalibur, Focus alot more
-* Support locked Xbox hard drives
-
 ## Quickstart:
 * You need to have your xbox harddrive in an unlocked state (FIXME!)
 * Download the [Shareware version](https://github.com/Daivuk/PureDOOM/blob/master/doom1.wad).
