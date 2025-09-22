@@ -11,10 +11,17 @@ https://github.com/user-attachments/assets/ad5efb7f-79c7-41e3-9849-dc8d458fa6fb
 * Place at `E:/doom/doom1.wad`.
 * Flash bios to your modchip of choice and run.
 
+## Compile (Docker)
+```
+docker build -t xboxdoombios-env .
+docker run --rm -v $(pwd):/workspace xboxdoombios-env \
+    bash -c "cd /workspace && cmake -S . -B build && cmake --build build -j$(nproc)"
+```
+
 ## Compile (Ubuntu/WSL2)
 ```
-sudo apt install git build-essential clang nasm cmake python3 python3-pip git
-pip install objutils lz4 pyelftools
+sudo apt install git build-essential clang nasm cmake python3 python3-pip
+pip install lz4 pyelftools
 git clone --recursive https://github.com/Ryzee119/XboxDoomBIOS.git
 cd XboxDoomBIOS
 mkdir build && cd build
