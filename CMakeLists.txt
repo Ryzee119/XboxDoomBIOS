@@ -3,7 +3,7 @@ cmake_minimum_required (VERSION 3.13)
 cmake_policy(SET CMP0079 NEW)
 cmake_policy(SET CMP0077 NEW)
 
-find_package (Python COMPONENTS Interpreter)
+find_package (Python3 REQUIRED COMPONENTS Interpreter)
 
 set(PROJECT_NAME "visor")
 set(OUTPUT_NAME "rom.elf")
@@ -75,13 +75,13 @@ target_link_libraries(${OUTPUT_NAME} PRIVATE c arith64 freertos_kernel pc xbox t
 
 # Create a binary from the elf
 add_custom_command(TARGET ${OUTPUT_NAME} POST_BUILD
-    COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/calculate_usage.py ${CMAKE_BINARY_DIR}/${OUTPUT_NAME}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/calculate_usage.py ${CMAKE_BINARY_DIR}/${OUTPUT_NAME}
 
     # Copy the original elf for debugging
     COMMAND cp ${CMAKE_BINARY_DIR}/${OUTPUT_NAME} ${CMAKE_BINARY_DIR}/original.elf
 
     COMMAND echo "Compressing ROM..."
-    COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/compress_rom.py
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/compress_rom.py
                                  ${CMAKE_BINARY_DIR}/${OUTPUT_NAME} ${CMAKE_BINARY_DIR}/compressed.bin
 
     # Push the compressed blob back into the elf
@@ -91,7 +91,7 @@ add_custom_command(TARGET ${OUTPUT_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} --remove-section=.text --remove-section=.data --remove-section=.rodata ${OUTPUT_NAME}
 
     # Calculate the final size ROM usage
-    COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/calculate_usage.py ${CMAKE_BINARY_DIR}/${OUTPUT_NAME}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/calculate_usage.py ${CMAKE_BINARY_DIR}/${OUTPUT_NAME}
 
     # Convert the elf to a binary 0x100000000 is 256kB from ROM base which makes 256Kb output size
     COMMAND ${CMAKE_OBJCOPY} -O binary --pad-to 0x100000000 --gap-fill 0xFF ${OUTPUT_NAME} ${CMAKE_BINARY_DIR}/rom.bin
