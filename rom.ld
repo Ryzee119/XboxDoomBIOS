@@ -1,7 +1,7 @@
 STACK_SIZE = 32K;
 ROM_VISOR_ENTRY_OFFSET = 0x00002000; /* Set by 2bxcodes.nasm */
-RAM_ENTRY_OFFSET = 0x00100000;
-/*FFF40000*/
+RAM_ENTRY_OFFSET = 0x03D2C000; /* Squeeze it in just after a 640x480x4 framebuffer at 0x03C00000 */
+
 MEMORY {
     ROM   (rx) : ORIGIN = 0xFFFC0000, LENGTH = 256K
     RAM   (rwx) : ORIGIN = 0x00000000, LENGTH = 64M

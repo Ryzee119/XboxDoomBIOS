@@ -6,61 +6,9 @@ static ata_bus_t ata_bus;
 extern void vPortYieldCall(void);
 extern void vPortTimerHandler(void);
 
-static void doom_task(void *parameters)
-{
-    while (1) {
-        doom_entry("C:/doom1.wad");
-    }
-}
-
 static xbox_eeprom_t eeprom;
 
-
-void draw_rect(uint32_t color, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
-{
-    const display_information_t *display = xbox_video_get_display_information();
-    if (!display->frame_buffer) {
-        return;
-    }
-
-    uint32_t *fb32 = (uint32_t *)display->frame_buffer;
-    for (uint32_t i = 0; i < height; i++) {
-        for (uint32_t j = 0; j < width; j++) {
-            fb32[(y + i) * display->width + x + j] = color;
-
-        }
-    }
-    xbox_video_flush_cache();
-}
-
-typedef enum xbox_gpu_register
-{
-    PMC = 0x000000,      // Length = 0x1000
-    PBUS = 0x001000,     // Length = 0x1000
-    PFIFO = 0x002000,    // Length = 0x2000
-    PRMA = 0x007000,     // Length = 0x1000
-    PVIDEO = 0x008000,   // Length = 0x1000
-    PTIMER = 0x009000,   // Length = 0x1000
-    PCOUNTER = 0x00a000, // Length = 0x1000
-    PVPE = 0x00b000,     // Length = 0x1000
-    PTV = 0x00d000,      // Length = 0x1000
-    PRMFB = 0x0a0000,    // Length = 0x20000
-    PRMVIO = 0x0c0000,   // Length = 0x1000
-    PFB = 0x100000,      // Length = 0x1000
-    PSTRAPS = 0x101000,  // Length = 0x1000
-    PGRAPH = 0x400000,   // Length = 0x2000
-    PCRTC = 0x600000,    // Length = 0x1000
-    PRMCIO = 0x601000,   // Length = 0x1000
-    PRAMDAC = 0x680000,  // Length = 0x1000
-    PRMDIO = 0x681000,   // Length = 0x1000
-} xbox_gpu_register_t;
-
-static inline uint32_t xbox_gpu_input32(xbox_gpu_register_t reg, uint32_t offset)
-{
-    assert((offset & 3) == 0);
-    volatile uint32_t *gpu_base = (volatile uint32_t *)PCI_GPU_MEMORY_REGISTER_BASE_0;
-    return gpu_base[(reg + offset) / 4];
-}
+void boot_linux(const char *linuxcfg_path);
 
 static void freertos_entry(void *parameters)
 {
@@ -114,33 +62,39 @@ static void freertos_entry(void *parameters)
 
     if (fileio_register_driver('C', &fatx_io, &ata_ll_io, NULL, &ata_bus) != 0) {
         printf_ts("[FS] Error mounting drive C as FATX\n");
+    } else {
+        printf_ts("[FS] Mounted drive C as FATX\n");
     }
 
     if (fileio_register_driver('E', &fatx_io, &ata_ll_io, NULL, &ata_bus) != 0) {
         printf_ts("[FS] Error mounting drive E as FATX\n");
+    } else {
+        printf_ts("[FS] Mounted drive E as FATX\n");
     }
-#if (0)
+    
+#if (1)
     if (fileio_register_driver('D', &iso9660_io, &ata_ll_io, NULL, &ata_bus) != 0) {
         printf_ts("[FS] Error mounting drive D as ISO9660\n");
+    } else {
+        printf_ts("[FS] Mounted drive D as ISO9660\n");
     }
 #endif
-
+#if (1)
+    const char *path = "D:/";
+    directory_handle_t *dir = opendir(path);
+    if (dir) {
+        directory_entry_t *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            printf_ts("[FS] Found file in %s: %s\r\n", path, entry->file_name);
+        }
+        closedir(dir);
+    } else {
+        printf_ts("[FS] Failed to open root of %s\n", path);
+    }
+#endif
     xbox_led_output(XLED_GREEN, XLED_GREEN, XLED_GREEN, XLED_GREEN);
 
-    printf_ts("TIMING: 22C: %08x\n", xbox_gpu_input32(PBUS, 0x22c));
-    printf_ts("TIMING: 23C: %08x\n", xbox_gpu_input32(PBUS, 0x23c));
-    printf_ts("TIMING: 230: %08x\n", xbox_gpu_input32(PBUS, 0x230));
-    printf_ts("TIMING: 240: %08x\n", xbox_gpu_input32(PBUS, 0x240));
-    printf_ts("TIMING: 234: %08x\n", xbox_gpu_input32(PBUS, 0x234));
-    printf_ts("TIMING: 244: %08x\n", xbox_gpu_input32(PBUS, 0x244));
-    printf_ts("TIMING: 238: %08x\n", xbox_gpu_input32(PBUS, 0x238));
-    printf_ts("TIMING: 248: %08x\n", xbox_gpu_input32(PBUS, 0x248));
-    printf_ts("TIMING: 214: %08x\n", xbox_gpu_input32(PBUS, 0x214));
-    printf_ts("TIMING: 218: %08x\n", xbox_gpu_input32(PBUS, 0x218));
-
-    vTaskDelay(1000);
-
-    xTaskCreate(doom_task, "Doom!", configMINIMAL_STACK_SIZE * 2, NULL, THREAD_PRIORITY_NORMAL, NULL);
+    boot_linux("D:/linuxboot.cfg");
 
     // We are done here. Delete this task.
     vTaskDelete(NULL);

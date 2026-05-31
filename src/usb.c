@@ -43,8 +43,8 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance, xinputh_i
     if (xid_itf->last_xfer_result == XFER_RESULT_SUCCESS) {
 
         if (xid_itf->connected && xid_itf->new_pad_data) {
-            dooom_new_input(p->wButtons, p->sThumbLX, p->sThumbLY, p->sThumbRX, p->sThumbRY, p->bLeftTrigger,
-                            p->bRightTrigger);
+            //dooom_new_input(p->wButtons, p->sThumbLX, p->sThumbLY, p->sThumbRX, p->sThumbRY, p->bLeftTrigger,
+            //                p->bRightTrigger);
         }
     }
     tuh_xinput_receive_report(dev_addr, instance);

@@ -61,10 +61,6 @@ add_library(iso9660 INTERFACE)
 target_sources(iso9660 INTERFACE ${ISO9660_DIR}/lib9660.c)
 target_compile_definitions(iso9660 INTERFACE L9660_HAVE_STDIO=1)
 
-#Midi
-add_library(midi INTERFACE)
-target_sources(midi INTERFACE ${CMAKE_CURRENT_LIST_DIR}/lib/midi/midiplay.c ${CMAKE_CURRENT_LIST_DIR}/lib/midi/synth.c)
-
 # Build our xbox specific code
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/xbox xbox)
 
@@ -73,7 +69,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pc pc)
 
 # Link the libraries
 set_target_properties(${OUTPUT_NAME} PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/rom.ld)
-target_link_libraries(${OUTPUT_NAME} PRIVATE c os-fallback arith64 freertos_kernel pc xbox tinyusb xinput_host fatfs fatfx iso9660 midi)
+target_link_libraries(${OUTPUT_NAME} PRIVATE c os-fallback arith64 freertos_kernel pc xbox tinyusb xinput_host fatfs fatfx iso9660)
 
 # Create a binary from the elf
 add_custom_command(TARGET ${OUTPUT_NAME} POST_BUILD
@@ -111,7 +107,7 @@ target_include_directories(${OUTPUT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib
 )
 
-file(GLOB C_SOURCES ${CMAKE_SOURCE_DIR}/*.c ${CMAKE_SOURCE_DIR}/fs_io/*.c)
+file(GLOB C_SOURCES ${CMAKE_SOURCE_DIR}/*.c ${CMAKE_SOURCE_DIR}/fs_io/*.c ${CMAKE_SOURCE_DIR}/linux/*.c)
 
 # Source files
 target_sources(${OUTPUT_NAME} PRIVATE
