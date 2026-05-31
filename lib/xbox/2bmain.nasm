@@ -97,7 +97,7 @@ section .visor_entry
     wbinvd
 
     ; Clear CR3
-    mov eax, eax
+    xor eax, eax
     mov cr3, eax
 
     ; Disable MTRRs
