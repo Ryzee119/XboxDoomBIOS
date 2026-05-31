@@ -6,78 +6,94 @@
 
 #if (1)
 // // given "c:/foo/bar/really_long_folder_name/my_file_is_here.txt" to "C:/FOO/BAR/REALLY_L/MY_FILE_.TXT;1"
-static void convert_path_to_iso9660(const char *input, char *output, size_t output_size)
+static void convert_path_to_iso9660(const char *input, char *output, uint8_t level, size_t output_size)
 {
-    size_t out_index = 0;
-    size_t token_index = 0;
-
-    strcpy(output, input);
+    memset(output, 'a', output_size);
+    char *output_start = output;
+    strncpy(output, input, output_size - 1);
+    output[output_size - 1] = '\0';
 
     if (output[1] == ':') {
         output[0] = toupper((unsigned char)output[0]);
         output[1] = ':';
         output[2] = '/';
-        out_index = 3;
+        output += 3;
     }
 
-    char *token = strtok(output + out_index, "/");
-    char *next_token = strtok(NULL, "/");
+    char *token = strtok(output, "/\\");
+    char *next_token = strtok(NULL, "/\\");
 
     while (token != NULL) {
-        token_index = 0;
-
         // If this is the last token, it's a file. Otherwise, it's a directory.
         if (next_token == NULL) {
-            int has_dot = 0;
-            // Name (up to 8 chars)
-            while (*token && *token != '.' && token_index < 8) {
-                if (!isalnum((unsigned char)*token)) {
-                    output[out_index++] = '_';
+            // Split off the extension first.
+            char *extension = strrchr(token, '.');
+            size_t extension_length = 0;
+
+            // Replace all invalid characters with underscores. Valid characters are A-Z, 0-9, and _.
+            for (size_t i = 0; i < strlen(token); i++) {
+                if (!isalnum(token[i])) {
+                    token[i] = '_';
                 } else {
-                    output[out_index++] = toupper((unsigned char)*token);
-                }
-                token++;
-                token_index++;
-            }
-
-            // Skip any remaining chars in the name
-            while (*token && *token != '.') {
-                token++;
-            }
-
-            // Extension (up to 3 chars)
-            if (*token == '.') {
-                has_dot = 1;
-                output[out_index++] = '.';
-                token++;
-                token_index = 0;
-                while (*token && token_index < 3) {
-                    output[out_index++] = toupper((unsigned char)*token);
-                    token++;
-                    token_index++;
+                    token[i] = toupper((unsigned char)token[i]);
                 }
             }
 
-            // ISO rule: All files MUST have a dot and a version number
-            if (!has_dot) {
-                output[out_index++] = '.';
-            }
-            output[out_index++] = ';';
-            output[out_index++] = '1';
+            // If there is an extension, split it off and cap it at 3 chars for level 1 isos
+            if (extension) {
+                *extension = '\0';
+                extension++;
 
+                extension_length = strlen(extension);
+
+                // level 1 isos only support 3 char extensions, so truncate if needed
+                if (level == 1 && extension_length > 3) {
+                    extension[3] = '\0';
+                    extension_length = 3;
+                }
+            }
+
+            // Cap the filename length at 8 chars for level 1 isos
+            size_t file_name_length = strlen(token);
+            if (level == 1 && file_name_length > 8) {
+                token[8] = '\0';
+                file_name_length = 8;
+            }
+
+            // Add a dot back in. Even if no extension ISO standard expect a dot.
+            token[file_name_length++] = '.';
+
+            // Put the extension after the filename
+            memmove(&token[file_name_length], extension, extension_length);
+            file_name_length += extension_length;
+
+            // Finally add the version number ;1 which is required by ISO9660
+            strcpy(&token[file_name_length], ";1");
+            file_name_length += 2;
+
+            output += file_name_length;
         } else {
-            // Directories don't care about dots, just grab the first 8 valid chars
-            while (*token && token_index < 8) {
-                if (!isalnum((unsigned char)*token)) {
-                    output[out_index++] = '_';
+            // Process a directory name.
+            size_t token_length = strlen(token);
+            size_t max_length = (level == 1) ? 8 : 31;
+            if (token_length > max_length) {
+                token[max_length] = '\0';
+            }
+            const size_t folder_name_length = strlen(token);
+
+            // Replace all invalid characters with underscores. Valid characters are A-Z, 0-9, and _.
+            // Also convert to uppercase since ISO9660 is case insensitive and most tools uppercase names
+            for (size_t i = 0; i < folder_name_length; i++) {
+                if (!isalnum(token[i])) {
+                    token[i] = '_';
                 } else {
-                    output[out_index++] = toupper((unsigned char)*token);
+                    token[i] = toupper((unsigned char)token[i]);
                 }
-                token++;
-                token_index++;
             }
 
-            output[out_index++] = '/';
+            // Re-add the directory separator that strtok removed
+            output += folder_name_length;
+            *output++ = '/';
         }
 
         // Advance the tokens
@@ -86,8 +102,6 @@ static void convert_path_to_iso9660(const char *input, char *output, size_t outp
             next_token = strtok(NULL, "/\\");
         }
     }
-
-    output[out_index] = '\0';
 }
 
 static l9660_dir *open_dir_recurse(l9660_fs *fs, l9660_dir *dir, const char *path);
@@ -157,19 +171,28 @@ user_file_handle_t *iso9660_open(user_fs_handle_t *handle, const char *path, int
     }
     memset(dir, 0, sizeof(l9660_dir));
 
-    convert_path_to_iso9660(path, converted_path, path_len + 1);
+    // Try 31 char filename first, then fallback to 8 char if that fails
+    const char *file_start;
+    convert_path_to_iso9660(path, converted_path, 2, path_len + 1);
 
-    const char *file_start = strrchr(converted_path, '/');
-    parent = open_dir_recurse(fs, dir, converted_path);
-
-    if (parent == NULL || file_start == NULL) {
-        vPortFree(file);
-        vPortFree(dir);
-        vPortFree(converted_path);
-        return NULL;
-    }
-
+    file_start = strrchr(converted_path, '/');
     file_start++;
+    parent = open_dir_recurse(fs, dir, converted_path);
+    status = (parent) ? l9660_openat(file, parent, file_start) : L9660_ENOENT;
+
+    if (status != L9660_OK) {
+        convert_path_to_iso9660(path, converted_path, 1, path_len + 1);
+        file_start = strrchr(converted_path, '/');
+        file_start++;
+        parent = open_dir_recurse(fs, dir, converted_path);
+        status = (parent) ? l9660_openat(file, parent, file_start) : L9660_ENOENT;
+        if (status != L9660_OK) {
+            vPortFree(file);
+            vPortFree(dir);
+            vPortFree(converted_path);
+            return NULL;
+        }
+    }
 
     status = l9660_openat(file, parent, file_start);
     vPortFree(dir);
@@ -228,12 +251,17 @@ user_dir_handle_t *iso9660_opendir(user_fs_handle_t *handle, const char *path)
 
     l9660_fs *fs = &fs_user->fs;
 
-    convert_path_to_iso9660(path, converted_path, path_len + 1);
+
+    convert_path_to_iso9660(path, converted_path, 2, path_len + 1);
     parent = open_dir_recurse(fs, dir, converted_path);
-    vPortFree(converted_path);
     if (parent == NULL) {
-        vPortFree(dir);
-        return NULL;
+        convert_path_to_iso9660(path, converted_path, 1, path_len + 1);
+        parent = open_dir_recurse(fs, dir, converted_path);
+        if (parent == NULL) {
+            vPortFree(dir);
+            vPortFree(converted_path);
+            return NULL;
+        }
     }
 
     return (user_dir_handle_t *)dir;
