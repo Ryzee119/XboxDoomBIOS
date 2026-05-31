@@ -15,11 +15,10 @@ add_executable(${OUTPUT_NAME})
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os -ffunction-sections -fdata-sections -fomit-frame-pointer")
 
 # picolibc
-#set(_FORMAT_DEFAULT_INTEGER ON) #Smaller, no float support
-set(_FORMAT_DEFAULT_DOUBLE ON)
-add_compile_definitions(_WANT_FAST_BUFIO)
-#add_compile_definitions(PREFER_SIZE_OVER_SPEED) # Doesnt make a big difference
+set(OS_FALLBACK ON CACHE BOOL "Build Picolibc fallback stubs" FORCE)
+add_compile_definitions(__PICOLIBC_MAJOR__=1) # Bit of a hack for FreeRTOS
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/picolibc)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/picolibc/libos/fallback)
 
 #arith64 - prevents having to link libgcc for a couple functions
 add_library(arith64 INTERFACE)
@@ -71,7 +70,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/xbox xbox)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pc pc)
 
 # Link the libraries
-target_link_libraries(${OUTPUT_NAME} PRIVATE c arith64 freertos_kernel pc xbox tinyusb xinput_host fatfs fatfx iso9660 midi)
+target_link_libraries(${OUTPUT_NAME} PRIVATE c os-fallback arith64 freertos_kernel pc xbox tinyusb xinput_host fatfs fatfx iso9660 midi)
 
 # Create a binary from the elf
 add_custom_command(TARGET ${OUTPUT_NAME} POST_BUILD
