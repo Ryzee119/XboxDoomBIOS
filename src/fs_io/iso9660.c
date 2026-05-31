@@ -5,6 +5,91 @@
 #include "main.h"
 
 #if (1)
+// // given "c:/foo/bar/really_long_folder_name/my_file_is_here.txt" to "C:/FOO/BAR/REALLY_L/MY_FILE_.TXT;1"
+static void convert_path_to_iso9660(const char *input, char *output, size_t output_size)
+{
+    size_t out_index = 0;
+    size_t token_index = 0;
+
+    strcpy(output, input);
+
+    if (output[1] == ':') {
+        output[0] = toupper((unsigned char)output[0]);
+        output[1] = ':';
+        output[2] = '/';
+        out_index = 3;
+    }
+
+    char *token = strtok(output + out_index, "/");
+    char *next_token = strtok(NULL, "/");
+
+    while (token != NULL) {
+        token_index = 0;
+
+        // If this is the last token, it's a file. Otherwise, it's a directory.
+        if (next_token == NULL) {
+            int has_dot = 0;
+            // Name (up to 8 chars)
+            while (*token && *token != '.' && token_index < 8) {
+                if (!isalnum((unsigned char)*token)) {
+                    output[out_index++] = '_';
+                } else {
+                    output[out_index++] = toupper((unsigned char)*token);
+                }
+                token++;
+                token_index++;
+            }
+
+            // Skip any remaining chars in the name
+            while (*token && *token != '.') {
+                token++;
+            }
+
+            // Extension (up to 3 chars)
+            if (*token == '.') {
+                has_dot = 1;
+                output[out_index++] = '.';
+                token++;
+                token_index = 0;
+                while (*token && token_index < 3) {
+                    output[out_index++] = toupper((unsigned char)*token);
+                    token++;
+                    token_index++;
+                }
+            }
+
+            // ISO rule: All files MUST have a dot and a version number
+            if (!has_dot) {
+                output[out_index++] = '.';
+            }
+            output[out_index++] = ';';
+            output[out_index++] = '1';
+
+        } else {
+            // Directories don't care about dots, just grab the first 8 valid chars
+            while (*token && token_index < 8) {
+                if (!isalnum((unsigned char)*token)) {
+                    output[out_index++] = '_';
+                } else {
+                    output[out_index++] = toupper((unsigned char)*token);
+                }
+                token++;
+                token_index++;
+            }
+
+            output[out_index++] = '/';
+        }
+
+        // Advance the tokens
+        token = next_token;
+        if (token != NULL) {
+            next_token = strtok(NULL, "/\\");
+        }
+    }
+
+    output[out_index] = '\0';
+}
+
 static l9660_dir *open_dir_recurse(l9660_fs *fs, l9660_dir *dir, const char *path);
 
 typedef struct l9660_user_fs
@@ -55,23 +140,32 @@ user_file_handle_t *iso9660_open(user_fs_handle_t *handle, const char *path, int
 
     l9660_dir *dir = pvPortMalloc(sizeof(l9660_dir));
     l9660_file *file = pvPortMalloc(sizeof(l9660_file));
-    if (dir == NULL || file == NULL) {
+
+    const size_t path_len = strlen(path);
+    char *converted_path = pvPortMalloc(path_len + 3);
+    if (dir == NULL || file == NULL || converted_path == NULL) {
         if (dir) {
             vPortFree(dir);
         }
         if (file) {
             vPortFree(file);
         }
+        if (converted_path) {
+            vPortFree(converted_path);
+        }
         return NULL;
     }
     memset(dir, 0, sizeof(l9660_dir));
 
-    const char *file_start = strrchr(path, '/');
-    parent = open_dir_recurse(fs, dir, path);
+    convert_path_to_iso9660(path, converted_path, path_len + 1);
+
+    const char *file_start = strrchr(converted_path, '/');
+    parent = open_dir_recurse(fs, dir, converted_path);
 
     if (parent == NULL || file_start == NULL) {
         vPortFree(file);
         vPortFree(dir);
+        vPortFree(converted_path);
         return NULL;
     }
 
@@ -79,6 +173,7 @@ user_file_handle_t *iso9660_open(user_fs_handle_t *handle, const char *path, int
 
     status = l9660_openat(file, parent, file_start);
     vPortFree(dir);
+    vPortFree(converted_path);
     if (status != L9660_OK) {
         vPortFree(file);
         return NULL;
@@ -119,13 +214,23 @@ user_dir_handle_t *iso9660_opendir(user_fs_handle_t *handle, const char *path)
     l9660_user_fs_t *fs_user = (l9660_user_fs_t *)handle;
     l9660_dir *parent;
     l9660_dir *dir = pvPortMalloc(sizeof(l9660_dir));
-    if (dir == NULL) {
+    const size_t path_len = strlen(path);
+    char *converted_path = pvPortMalloc(path_len + 3);
+    if (dir == NULL || converted_path == NULL) {
+        if (dir) {
+            vPortFree(dir);
+        }
+        if (converted_path) {
+            vPortFree(converted_path);
+        }
         return NULL;
     }
 
     l9660_fs *fs = &fs_user->fs;
 
-    parent = open_dir_recurse(fs, dir, path);
+    convert_path_to_iso9660(path, converted_path, path_len + 1);
+    parent = open_dir_recurse(fs, dir, converted_path);
+    vPortFree(converted_path);
     if (parent == NULL) {
         vPortFree(dir);
         return NULL;
@@ -137,7 +242,8 @@ user_dir_handle_t *iso9660_opendir(user_fs_handle_t *handle, const char *path)
 struct directory_entry *iso9660_readdir(user_dir_handle_t *handle, struct directory_entry *entry)
 {
     l9660_dir *dir = (l9660_dir *)handle;
-    l9660_dirent *dent;
+    char temp[300];
+    l9660_dirent *dent = (l9660_dirent *)temp;
     l9660_status status = l9660_readdir(dir, &dent);
 
     if (status != L9660_OK || dent == NULL) {
@@ -148,7 +254,10 @@ struct directory_entry *iso9660_readdir(user_dir_handle_t *handle, struct direct
 #else
     memcpy(&entry->file_size, dent->size.be, sizeof(entry->file_size));
 #endif
-    strncpy(entry->file_name, dent->name, sizeof(entry->file_name));
+    const size_t name_len =
+        (dent->name_len < sizeof(entry->file_name) - 1) ? dent->name_len : sizeof(entry->file_name) - 1;
+    strncpy(entry->file_name, dent->name, name_len);
+    entry->file_name[name_len] = '\0';
     return entry;
 }
 
@@ -186,6 +295,9 @@ static l9660_dir *open_dir_recurse(l9660_fs *fs, l9660_dir *dir, const char *pat
 
     char *seg_start = path_copy;
     char *seg_end = NULL;
+    char path_len = strlen(path_copy);
+
+    l9660_dir temp;
 
     while ((seg_end = strchr(seg_start, '/')) != NULL) {
         *seg_end = '\0';
@@ -193,14 +305,15 @@ static l9660_dir *open_dir_recurse(l9660_fs *fs, l9660_dir *dir, const char *pat
         assert(len > 0);
 
         if (len >= 2 && seg_start[1] == ':') {
-            status = l9660_fs_open_root(dir, fs);
+            status = l9660_fs_open_root(&temp, fs);
         } else {
-            status = l9660_opendirat(dir, dir, seg_start);
+            status = l9660_opendirat(&temp, dir, seg_start);
         }
         if (status != L9660_OK) {
             vPortFree(path_copy);
             return NULL;
         }
+        memcpy(dir, &temp, sizeof(l9660_dir));
         seg_start = seg_end + 1;
     }
     vPortFree(path_copy);
