@@ -231,26 +231,24 @@ reload_segment_selectors:
     call LZ4_decompress_fast
     add esp, 16
 
+    ; Prep esi (Source when decomp now lives)
+    ; esi automatically increments after movsd
+    mov esi, DECOMP_RAM_DESTINATION ;
+
     ; Copy text section
     mov     edi, __user_text_vma
-    mov     esi, DECOMP_RAM_DESTINATION ; base + __user_text_size
     mov     ecx, __user_text_size
     shr     ecx, 2
     rep     movsd
 
     ; Copy data section
     mov     edi, __user_data_vma
-    mov     esi, DECOMP_RAM_DESTINATION
-    add     esi, __user_text_size
     mov     ecx, __user_data_size
     shr     ecx, 2
     rep     movsd
 
     ; Copy rodata section
     mov     edi, __user_rodata_vma
-    mov     esi, DECOMP_RAM_DESTINATION ; base + __user_text_size + __user_data_size
-    add     esi, __user_text_size
-    add     esi, __user_data_size
     mov     ecx, __user_rodata_size
     shr     ecx, 2
     rep     movsd
