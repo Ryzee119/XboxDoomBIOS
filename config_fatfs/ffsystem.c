@@ -4,7 +4,11 @@
 
 void *ff_memalloc(UINT msize)
 {
-    return pvPortMalloc((size_t)msize);
+    void *ptr;
+    if (msize == 0) return NULL;
+    ptr = pvPortMalloc((size_t)msize);
+    configASSERT(ptr != NULL);
+    return ptr;
 }
 
 void ff_memfree(void *mblock /* Pointer to the memory block to free (no effect if null) */
