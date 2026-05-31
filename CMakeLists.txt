@@ -70,6 +70,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/xbox xbox)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pc pc)
 
 # Link the libraries
+set_target_properties(${OUTPUT_NAME} PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/rom.ld)
 target_link_libraries(${OUTPUT_NAME} PRIVATE c os-fallback arith64 freertos_kernel pc xbox tinyusb xinput_host fatfs fatfx iso9660 midi)
 
 # Create a binary from the elf
