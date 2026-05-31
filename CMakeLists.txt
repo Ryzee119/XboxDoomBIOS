@@ -58,6 +58,7 @@ target_sources(fatfx INTERFACE ${FATX_SOURCES})
 set(ISO9660_DIR ${CMAKE_CURRENT_LIST_DIR}/lib/lib9660)
 add_library(iso9660 INTERFACE)
 target_sources(iso9660 INTERFACE ${ISO9660_DIR}/lib9660.c)
+target_compile_definitions(iso9660 INTERFACE L9660_HAVE_STDIO=1)
 
 #Midi
 add_library(midi INTERFACE)
