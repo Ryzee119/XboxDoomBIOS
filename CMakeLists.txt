@@ -17,6 +17,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os -ffunction-sections -fdata-sections -fom
 # picolibc
 set(OS_FALLBACK ON CACHE BOOL "Build Picolibc fallback stubs" FORCE)
 add_compile_definitions(__PICOLIBC_MAJOR__=1) # Bit of a hack for FreeRTOS
+add_compile_definitions(__THREAD_LOCAL_STORAGE_API)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/picolibc)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/picolibc/libos/fallback)
 
@@ -89,7 +90,7 @@ add_custom_command(TARGET ${OUTPUT_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} --update-section .compressed=${CMAKE_BINARY_DIR}/compressed.bin ${OUTPUT_NAME}
 
     # These sections are now compressed, so we can remove them from the final binary as they are decompressed at runtime
-    COMMAND ${CMAKE_OBJCOPY} --remove-section=.text --remove-section=.data --remove-section=.rodata ${OUTPUT_NAME}
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.text --remove-section=.data --remove-section=.rodata --remove-section=.tdata ${OUTPUT_NAME}
 
     # Calculate the final size ROM usage
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/calculate_usage.py ${CMAKE_BINARY_DIR}/${OUTPUT_NAME}

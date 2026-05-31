@@ -489,4 +489,5 @@ static inline void printme(const char *f, int l) {
 #define configISR_STACK_SIZE (configMINIMAL_STACK_SIZE * 2)
 #define configUSE_COMMON_INTERRUPT_ENTRY_POINT 0
 #define configSUPPORT_FPU 1
+#define configUSE_PICOLIBC_TLS 1
 #endif /* FREERTOS_CONFIG_H */

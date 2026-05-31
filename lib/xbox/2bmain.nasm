@@ -13,6 +13,9 @@ extern __user_data_size
 extern __user_rodata_vma
 extern __user_rodata_size
 
+extern __user_tdata_vma
+extern __user_tdata_size
+
 extern __boot_code_vma
 extern __boot_code_lma
 extern __boot_code_size
@@ -166,14 +169,16 @@ section .visor_entry
 section .boot_code
 align 16
 gdt_table:
-    dq 0x0000000000000000  ; Dummy
-    dq 0x00CF9B000000FFFF  ; 0x0008 code32
-    dq 0x00CF93000000FFFF  ; 0x0010 data32
+    dq 0x0000000000000000  ; 0x00: Null descriptor
+    dq 0x0000000000000000  ; 0x08: Unused (Padding to push CS to 0x10)
+    dq 0x00CF9A000000FFFF  ; 0x10: __BOOT_CS (Execute/Read)
+    dq 0x00CF92000000FFFF  ; 0x18: __BOOT_DS (Read/Write)
+    dq 0x00CF92000000FFFF  ; 0x20: __TLS_DS  (Base address will be patched by C)
 
 gdt_desc:
-    dw 24-1                ; Limit (size of gdt_table - 1)
+    dw 40-1                ; Limit (4 entries * 8 bytes = 32 bytes total)
     dd gdt_table           ; Base address of gdt_table
-    dw 0x00;
+    dw 0x00                ; Padding
 
 idt_desc:
     dw 256*8-1             ; Limit (size of idt_table - 1)
@@ -193,20 +198,23 @@ boot_entry:
 
     ; As we changed gdt while in protected mode, we need to reload the code segment selector
     ; this is done by doing a long jump with the code32 offset
-    jmp 0x0008:reload_segment_selectors
+    jmp 0x0010:reload_segment_selectors
 
 align 16
 reload_segment_selectors:
     ; Set the data segment registers now
-    mov ax, 0x0010
+    mov ax, 0x0018
     mov ss, ax
     mov ds, ax
     mov es, ax
 
-    ; Clear fs and gs
+    ; Set TLS data segment
+    mov ax, 0x0020
+    mov gs, ax
+
+    ; Clear fs
     xor eax, eax
     mov fs, eax
-    mov gs, eax
 
     ; Clear out .bss
     xor eax, eax
@@ -250,6 +258,12 @@ reload_segment_selectors:
     ; Copy rodata section
     mov     edi, __user_rodata_vma
     mov     ecx, __user_rodata_size
+    shr     ecx, 2
+    rep     movsd
+
+    ; Copy tdata section
+    mov     edi, __user_tdata_vma
+    mov     ecx, __user_tdata_size
     shr     ecx, 2
     rep     movsd
 

@@ -42,7 +42,6 @@ SECTIONS {
         /* picolibc stuff */
         KEEP (*(.fini .fini.*))
         *(.got.plt)
-        *(.tbss.*)
 
         . = ALIGN(4);
         PROVIDE_HIDDEN(__preinit_array_start = .);
@@ -74,6 +73,52 @@ SECTIONS {
         *(.rodata.*)
         . = ALIGN(4);
     } > RAM
+
+    .tdata : ALIGN(16) {
+        __tdata_start = .;
+        *(.tdata)
+        *(.tdata.*)
+        *(.gnu.linkonce.td.*)
+        __tdata_end = .;
+        . = ALIGN(4);
+    } > RAM
+
+    .tbss (NOLOAD) : ALIGN(16) {
+        __tbss_start = .;
+        *(.tbss .tbss.* .gnu.linkonce.tb.*)
+        *(.tcommon)
+        __tbss_end = .;
+    } > RAM
+
+    /* The format of the picolibc TLS block is
+     * Head: Stack protection (optional, .stack_chk)
+     * Body: The combined .tdata and .tbss sections
+     * Tail: The Thread Control Block (TCB)
+    */
+    __tls_align = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss));
+    .tls_space (NOLOAD) : ALIGN(__tls_align) {
+        __tls_head_start = .;
+        KEEP (*(.stack_chk .stack_chk.*))
+        __tls_head_end = .;
+
+        . = ALIGN(__tls_align);
+        . = . + (ADDR(.tbss) + SIZEOF(.tbss) - ADDR(.tdata));
+
+        . = ALIGN(__tls_align);
+        __tls_tail_start = .;
+        KEEP (*(.tls_tail_extra .tls_tail_extra.*))
+        __tls_tail_end = .;
+    } > RAM
+
+    __tls_head_size  = ALIGN(__tls_head_end - __tls_head_start, __tls_align);
+    __tls_space_size = ADDR(.tbss) + SIZEOF(.tbss) - ADDR(.tdata);
+    __tls_tail_size  = __tls_tail_end - __tls_tail_start;
+    __tbss_offset  = ADDR(.tbss) - ADDR(.tdata);
+    __tbss_size    = SIZEOF(.tbss);
+    __tls_size = __tls_head_size + ALIGN(__tls_space_size, __tls_align) + __tls_tail_size;
+    __x86_tls_tcb_offset = ALIGN(__tls_head_size + __tls_space_size, __tls_align) + __tls_head_size;
+    __tdata_source = LOADADDR(.tdata) - __tls_head_size;
+    __tdata_size   = SIZEOF(.tdata) + __tls_head_size;
 
     .bss (NOLOAD) : ALIGN(16) {
         __bss_start = .;
@@ -114,10 +159,12 @@ SECTIONS {
     __user_text_vma = ADDR(.text);
     __user_data_vma = ADDR(.data);
     __user_rodata_vma = ADDR(.rodata);
+    __user_tdata_vma = ADDR(.tdata);
 
     __user_text_size = SIZEOF(.text);
     __user_data_size = SIZEOF(.data);
     __user_rodata_size = SIZEOF(.rodata);
+    __user_tdata_size = SIZEOF(.tdata);
 
     __boot_code_vma = ADDR(.boot_code);
     __boot_code_lma = LOADADDR(.boot_code);

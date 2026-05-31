@@ -28,6 +28,9 @@ def print_memory_usage(elf_path):
             elif '.bss' in section.name:
                 ram_usage += sh_size
 
+            elif '.tbss' in section.name:
+                ram_usage += sh_size
+
             elif '.boot_code' in section.name:
                 boot_size += sh_size
 
