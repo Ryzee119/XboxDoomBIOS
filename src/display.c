@@ -7,23 +7,25 @@ static uint32_t cursor_y = MARGIN;
 void apply_all_video_modes(void *fb);
 void display_init()
 {
-    int width = 640;
-    int height = 480;
+    int width = 1280;
+    int height = 720;
     int bpp = 4;
-
-    const xbox_eeprom_t *eeprom = xbox_eeprom_get();
-    if (eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_WIDESCREEN) {
-        width = 720;
-    }
 
     uint32_t mode_coding = xbox_video_get_suitable_mode_coding(width, height);
 
     // Invalid input, fallback to 640x480 to hopefully show something
     if (mode_coding == 0) {
         // This should always be valid
-        printf_ts("[DISPLAY] Failed to find a suitable mode, trying 640x480\n");
+        printf_ts("[DISPLAY] Failed to find a suitable mode, trying SDTV\n");
+
         width = 640;
         height = 480;
+
+        const xbox_eeprom_t *eeprom = xbox_eeprom_get();
+        if (eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_WIDESCREEN) {
+            width = 720;
+        }
+ 
         mode_coding = xbox_video_get_suitable_mode_coding(width, height);
         if (mode_coding == 0) {
             mode_coding = 0x04010101; // Just pick one to hopefully show something
