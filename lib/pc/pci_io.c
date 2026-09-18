@@ -55,7 +55,7 @@ void pci_io_input_n(uint8_t bus, uint8_t dev, uint8_t func, uint32_t size_of_dat
         size_of_data -= 4;
         i += 4;
     }
-    uint8_t *data8 = (uint8_t *)data;
+    uint8_t *data8 = (uint8_t *)data32;
     while (size_of_data > 0) {
         *data8++ = pci_io_input_byte(bus, dev, func, i);
         size_of_data--;
@@ -72,7 +72,7 @@ void pci_io_output_n(uint8_t bus, uint8_t dev, uint8_t func, uint32_t size_of_da
         size_of_data -= 4;
         i += 4;
     }
-    uint8_t *data8 = (uint8_t *)data;
+    uint8_t *data8 = (uint8_t *)data32;
     while (size_of_data > 0) {
         pci_io_output_byte(bus, dev, func, i, *data8++);
         size_of_data--;
