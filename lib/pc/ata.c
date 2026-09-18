@@ -20,6 +20,8 @@ atomic_flag lock;
 #define ATA_ACTIVE_MASTER 0x00
 #define ATA_ACTIVE_SLAVE  0x01
 
+#define ATA_PRD_ENTRIES_MAX 32
+
 struct prd_entry
 {
     uint32_t base_addr;
@@ -197,29 +199,33 @@ static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t r
 {
     int8_t error = 0;
 
-    // Set up the PRD Table chain, each entry can transfer up to 64KB, we allow queueing up to 8 entries (512K)
-    static struct prd_entry prd_table[ATA_MAX_DMA_QUEUE_BYTES / 0xFFFF];
+    // Set up the PRD Table chain. Align to 32 bytes to ensure it never crosses a 64KB boundary.
+    static struct prd_entry prd_table[ATA_PRD_ENTRIES_MAX] __attribute__((aligned(32)));
     uint32_t bytes_to_process = bytes_to_transfer;
     uint8_t *buffer8 = (uint8_t *)buffer;
     uint8_t prd_index = 0, command;
 
-    // FIXME: This assumes contigous memory but we can scatter gather on page boundaries - although we're not paging
-    // anyway so all good
     while (bytes_to_process > 0) {
-        uint32_t bytes = (bytes_to_process > 0xFFFF) ? 0xFFFF : bytes_to_process;
+        assert(prd_index < ATA_PRD_ENTRIES_MAX);
 
-        // Make sure we dont cross a 64K boundary
-        uint32_t max = 0x10000 - ((uint32_t)buffer8 & 0xFFFF);
-        if (bytes > max) {
-            bytes = max;
+        uint32_t phys_addr = (uint32_t)system_get_physical_address(buffer8);
+        assert((phys_addr & 0x3) == 0);
+
+        // Distance to next 64KB physical page boundary
+        uint32_t boundary_offset = phys_addr & 0xFFFF;
+        uint32_t max_bytes_in_chunk = 0x10000 - boundary_offset;
+
+        uint32_t bytes = (bytes_to_process > max_bytes_in_chunk) ? max_bytes_in_chunk : bytes_to_process;
+        if (bytes > 0x10000) {
+            bytes = 0x10000;
         }
 
         bytes_to_process -= bytes;
 
-        prd_table[prd_index].base_addr = (uint32_t)system_get_physical_address(buffer8);
-        assert((prd_table[prd_index].base_addr & 0x3) == 0);
-        prd_table[prd_index].byte_count = bytes;
-        prd_table[prd_index].flags = (bytes_to_process) ? 0x0000 : 0x8000; // Set MSB to indicate the last entry
+        prd_table[prd_index].base_addr = phys_addr;
+        // SFF-8038i: 0x0000 indicates 65,536 (64K) bytes
+        prd_table[prd_index].byte_count = (bytes == 0x10000) ? 0x0000 : (uint16_t)bytes;
+        prd_table[prd_index].flags = (bytes_to_process == 0) ? 0x8000 : 0x0000; // Set MSB to indicate the last entry
 
         prd_index++;
         buffer8 += bytes;
@@ -247,7 +253,7 @@ static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t r
     uint32_t timeout = 0;
     do {
         uint8_t dma_status = inb(ata_bus->busmaster_base + ATA_BUSMASTER_DMA_STATUS);
-        if (dma_status & ATA_BUSMASTER_DMA_STATUS_INTERRUPT) {
+        if (dma_status & (ATA_BUSMASTER_DMA_STATUS_INTERRUPT | ATA_BUSMASTER_DMA_STATUS_ERROR)) {
            break;
         }
         system_yield(0);
@@ -262,8 +268,6 @@ static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t r
 
     // Check for timeout or transfer errors
     uint8_t dma_status = inb(ata_bus->busmaster_base + ATA_BUSMASTER_DMA_STATUS);
-    if (dma_status != 0x04)
-        printf("dma_status  %02x\n", dma_status);
     if (timeout >= timeout_time) {
         error = -1;
     } else {
