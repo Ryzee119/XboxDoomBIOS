@@ -52,15 +52,15 @@ static inline __attribute__((always_inline)) void cpu_disable_cache(void)
     uint32_t cr0;
     asm volatile("mov %%cr0, %0" : "=r"(cr0));
     cr0 |= (1 << 30);
-    asm volatile("mov %0, %%cr0" : : "r"(cr0));
+    asm volatile("mov %0, %%cr0\n\twbinvd" : : "r"(cr0) : "memory");
 }
 
 static inline __attribute__((always_inline)) void cpu_enable_cache(void)
 {
     uint32_t cr0;
-    asm volatile("mov %%cr0, %0" : "=r"(cr0));
+    asm volatile("wbinvd\n\tmov %%cr0, %0" : "=r"(cr0) : : "memory");
     cr0 &= ~(1 << 30);
-    asm volatile("mov %0, %%cr0" : : "r"(cr0));
+    asm volatile("mov %0, %%cr0" : : "r"(cr0) : "memory");
 }
 
 static inline __attribute__((always_inline)) void cpu_read_cpuid(uint32_t code, uint32_t *eax, uint32_t *ebx,
