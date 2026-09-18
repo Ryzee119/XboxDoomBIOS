@@ -294,9 +294,10 @@ void xbox_video_init(uint32_t mode_coding, xbox_framebuffer_format_t format, voi
 
     io_output_byte(PCI_LPCBRIDGE_IO_REGISTER_BASE_0 + 0xD3, 0x05);
 
+    uint32_t timeout = 1000000;
     do {
         temp = xbox_gpu_input32(PRAMDAC, 0x6A0);
-    } while (((~(temp >> 4) ^ ~temp) & 1) != 0);
+    } while (((~(temp >> 4) ^ ~temp) & 1) != 0 && --timeout > 0);
 
     xbox_gpu_output_crtc(0x1F, 0x57);
     xbox_gpu_output_crtc(0x21, 0xFF);
@@ -438,10 +439,11 @@ void xbox_video_init(uint32_t mode_coding, xbox_framebuffer_format_t format, voi
     xbox_gpu_output_crtc(0x28, ((bpp == 4) ? 0x83 : 0x82));
 
     for (int i = 0; i < 3; i++) {
-        ;
-        while ((xbox_gpu_input08(PRMCIO, 0x3DA) & 0x08) != 0x00)
+        uint32_t timeout = 1000000;
+        while ((xbox_gpu_input08(PRMCIO, 0x3DA) & 0x08) != 0x00 && --timeout > 0)
             ;
-        while ((xbox_gpu_input08(PRMCIO, 0x3DA) & 0x08) == 0x00)
+        timeout = 1000000;
+        while ((xbox_gpu_input08(PRMCIO, 0x3DA) & 0x08) == 0x00 && --timeout > 0)
             ;
     }
 
