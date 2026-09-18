@@ -6,7 +6,9 @@ static SemaphoreHandle_t doom_audio_semaphore;
 
 static void XAudioCallbackfn(void *pac97Device, void *data)
 {
-    xSemaphoreGiveFromISR(doom_audio_semaphore, NULL);
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xSemaphoreGiveFromISR(doom_audio_semaphore, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 static int16_t linear_interpolate(int16_t y1, int16_t y2, float t)
