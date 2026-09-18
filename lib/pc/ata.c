@@ -492,25 +492,25 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
         uint16_t id[256];
         insw(ata_bus->io_base + ATA_IO_DATA, id, 256);
 
-        // UDMA information
-        ide_device->selected_udma_mode = (id[88] >> 8) & 0xFF;
-        ide_device->supported_udma_mode = id[88] & 0xFF;
+        // UDMA information (Word 88 valid only if Word 53 bit 2 is set)
+        if (id[53] & (1 << 2)) {
+            ide_device->selected_udma_mode = (id[88] >> 8) & 0xFF;
+            ide_device->supported_udma_mode = id[88] & 0xFF;
+        } else {
+            ide_device->selected_udma_mode = 0;
+            ide_device->supported_udma_mode = 0;
+        }
 
         if (ide_device->is_atapi == 0) {
             // 80 wire conductor information
             // Bit 13 of word 93 is CBLID, it is pulled low on 80 wire conductors, otherwise high
             if (!(id[93] & (1 << 13))) {
                 ata_bus->wire80 = 1;
+                // 80-wire cable supports up to UDMA 5 (100 MB/s) on Xbox MCPX IDE controller
+                ide_device->supported_udma_mode &= 0x3F;
             } else {
-                ide_device->supported_udma_mode &= 0x03; // Restrict to UDMA 2 or less on 40 wire conductor
-            }
-
-            //Xbox specific. Apparently the 80 wire conduct bit is not reliable on xbox, so we assume it is low always
-            ide_device->supported_udma_mode &= 0x03;
-
-            // We atleast need UDMA1. This shouldnt be zero
-            if (ide_device->supported_udma_mode == 0) {
-                ide_device->supported_udma_mode = 0x01;
+                // 40-wire cable supports up to UDMA 2 (33.3 MB/s)
+                ide_device->supported_udma_mode &= 0x07;
             }
 
             // LBA28 Addressing: Words 60-61 contain total user-addressable sectors
@@ -562,20 +562,24 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
         // Enable fastest UDMA mode supported
         // Section 6.48 T13/1532D Volume 1 Revision 1a Table 41
         if (ide_device->supported_udma_mode) {
-            uint8_t udma_mode = 0x00;
+            int8_t best_mode = -1;
             for (int8_t mode = 6; mode >= 0; mode--) {
-                if (ide_device->supported_udma_mode & (1 << (mode - 1))) {
-                    udma_mode = ATA_TRANSFER_MODE_UDMA | mode;
+                if (ide_device->supported_udma_mode & (1 << mode)) {
+                    best_mode = mode;
                     break;
                 }
             }
-            udma_mode = ATA_TRANSFER_MODE_UDMA | udma_mode;
-            printf("[ATA] Setting UDMA Mode %02x\n", udma_mode);
 
-            outb(ata_bus->io_base + ATA_IO_FEATURES, ATA_FEATURE_SET_TRANSFER_MODE);
-            outb(ata_bus->io_base + ATA_IO_SECTOR_COUNT, udma_mode);
-            outb(ata_bus->io_base + ATA_IO_COMMAND, ATA_CMD_SET_FEATURES);
-            ata_busy_wait(ata_bus);
+            if (best_mode >= 0) {
+                uint8_t udma_mode = ATA_TRANSFER_MODE_UDMA | (uint8_t)best_mode;
+                printf("[ATA] Setting UDMA Mode %02x\n", udma_mode);
+
+                outb(ata_bus->io_base + ATA_IO_FEATURES, ATA_FEATURE_SET_TRANSFER_MODE);
+                outb(ata_bus->io_base + ATA_IO_SECTOR_COUNT, udma_mode);
+                outb(ata_bus->io_base + ATA_IO_COMMAND, ATA_CMD_SET_FEATURES);
+                ata_busy_wait(ata_bus);
+                ide_device->selected_udma_mode = (uint8_t)best_mode;
+            }
         }
         ata_set_irq_en(ata_bus, 1);
 
@@ -624,8 +628,7 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
 #endif
     }
 
-    ata_bus_reset(ata_bus);
-    return error;
+    return (ata_bus->master.is_present || ata_bus->slave.is_present) ? 0 : -1;
 }
 
 // For DMA, the data buffers cannot cross a 64K boundary, and must be contiguous in physical memory
