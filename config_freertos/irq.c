@@ -1,6 +1,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
+/* Dummy APIC register page for FreeRTOS IA32_flat port when running on 8259 PIC.
+ * All offsets (including 0xA0 PPR) read 0, satisfying priority assertions. */
+uint32_t freertos_dummy_apic[256] __attribute__((aligned(16))) = {0};
+
 #if (0)
 // generate a generation protection fault
 __asm__ volatile("mov $0xdead, %ax\n\t"

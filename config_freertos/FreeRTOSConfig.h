@@ -330,6 +330,20 @@
  * on the FreeRTOS port. */
 #define configMAX_API_CALL_INTERRUPT_PRIORITY    15
 
+/* The original Xbox disables the Local APIC and uses the legacy 8259 dual-PIC.
+ * Critical sections disable interrupts via cli (configMAX_API_CALL_INTERRUPT_PRIORITY == 15).
+ * Reading the APIC Processor Priority Register (PPR) at 0xFEE000A0 is invalid because
+ * the APIC is disabled. */
+#ifndef portASSERT_IF_INTERRUPT_PRIORITY_INVALID
+#define portASSERT_IF_INTERRUPT_PRIORITY_INVALID()
+#endif
+
+#ifndef __ASSEMBLER__
+#include <stdint.h>
+extern uint32_t freertos_dummy_apic[256];
+#define configAPIC_BASE ((uint32_t)freertos_dummy_apic)
+#endif
+
 /******************************************************************************/
 /* Hook and callback function related definitions. ****************************/
 /******************************************************************************/
