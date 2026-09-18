@@ -52,7 +52,7 @@ int8_t xbox_smc_set_fan(uint8_t fan_percent)
     // 0 - 50 = 0 - 100%
     fan_percent /= 2;
 
-    if (smbus_output_byte(XBOX_SMBUS_ADDRESS_SMC, XBOX_SMC_SET_FAN_MODE, 1) > 0) {
+    if (smbus_output_byte(XBOX_SMBUS_ADDRESS_SMC, XBOX_SMC_SET_FAN_MODE, 1) >= 0) {
         return smbus_output_byte(XBOX_SMBUS_ADDRESS_SMC, XBOX_SMC_SET_FAN_SPEED, fan_percent);
     }
     return -1;
@@ -66,7 +66,7 @@ int8_t xbox_smc_read_temperatures(uint8_t *cpu_temp, uint8_t *mb_temp)
         status = -1;
     }
     
-    if (smbus_input_byte(XBOX_SMBUS_ADDRESS_SMC, XBOX_SMC_GET_MB_TEMP, mb_temp)) {
+    if (smbus_input_byte(XBOX_SMBUS_ADDRESS_SMC, XBOX_SMC_GET_MB_TEMP, mb_temp) < 0) {
         *mb_temp = 0;
         status = -1;
     }
