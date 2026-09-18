@@ -351,13 +351,13 @@ static int8_t ata_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, ata_com
     error = busmaster_dma_transfer(ata_bus, buffer, read, buffer_length);
 
     if (read == 0) {
-        ata_command_t ata_command = {
+        ata_command_t flush_cmd = {
             .command = (is_lba28) ? ATA_CMD_FLUSH_CACHE : ATA_CMD_FLUSH_CACHE_EXT,
             .lba = 0,
             .sector_count = 0,
             .feature = 0,
         };
-        ata_send_command(ata_bus, 0, &ata_command);
+        ata_send_command(ata_bus, device_index, &flush_cmd);
     }
 
 bail_out:
@@ -365,7 +365,7 @@ bail_out:
     return error;
 }
 
-static int8_t ide_dma_io(ata_bus_t *ata_bus, uint8_t device_index, uint8_t read, uint32_t lba, void *buffer,
+static int8_t ide_dma_io(ata_bus_t *ata_bus, uint8_t device_index, uint8_t read, uint64_t lba, void *buffer,
                          uint32_t sector_count)
 {
     const ide_device_t *ide_device = (device_index == 0) ? &ata_bus->master : &ata_bus->slave;
@@ -380,7 +380,7 @@ static int8_t ide_dma_io(ata_bus_t *ata_bus, uint8_t device_index, uint8_t read,
     if (ide_device->is_atapi) {
         atapi_read12_cmd_t atapi_command = {
             .opcode = (read) ? ATAPI_CMD_READ_12 : ATAPI_CMD_WRITE_12,
-            .lba = BSWAP_BE32(lba),
+            .lba = BSWAP_BE32((uint32_t)lba),
             .transfer_length = BSWAP_BE32(sector_count),
             .control = 0,
             .flags = 0,
@@ -390,14 +390,16 @@ static int8_t ide_dma_io(ata_bus_t *ata_bus, uint8_t device_index, uint8_t read,
                                   sector_count * ide_device->sector_size);
     } else {
         ata_command_t ata_command = {
-            .command = (read) ? ATA_CMD_READ_LBA28_DMA : ATA_CMD_WRITE_LBA28_DMA,
             .lba = lba,
             .sector_count = sector_count,
             .feature = 0,
         };
         // LBA28 is slightly faster than LBA48, so only fallback to LBA48 if needed
-        if (lba > ide_device->ata.total_sector_count_lba28 || sector_count > 256) {
-            ata_command.command = (read) ? ATA_CMD_READ_LBA48_PIO : ATA_CMD_WRITE_LBA48_PIO;
+        if ((lba + sector_count) <= 0x10000000ULL && sector_count <= 256 &&
+            (lba + sector_count) <= ide_device->ata.total_sector_count_lba28) {
+            ata_command.command = (read) ? ATA_CMD_READ_LBA28_DMA : ATA_CMD_WRITE_LBA28_DMA;
+        } else {
+            ata_command.command = (read) ? ATA_CMD_READ_LBA48_DMA : ATA_CMD_WRITE_LBA48_DMA;
         }
         return ata_dma_transfer(ata_bus, device_index, &ata_command, read, buffer,
                                 sector_count * ide_device->sector_size);
@@ -598,7 +600,7 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
 }
 
 // For DMA, the data buffers cannot cross a 64K boundary, and must be contiguous in physical memory
-int8_t ide_dma_read(ata_bus_t *ata_bus, uint8_t device_index, uint32_t lba, void *buffer, uint32_t sector_count)
+int8_t ide_dma_read(ata_bus_t *ata_bus, uint8_t device_index, uint64_t lba, void *buffer, uint32_t sector_count)
 {
     // Ensure 4 bytes aligned
     assert(((uint32_t)buffer & 0x3) == 0);
@@ -606,7 +608,7 @@ int8_t ide_dma_read(ata_bus_t *ata_bus, uint8_t device_index, uint32_t lba, void
 }
 
 // For DMA, the data buffers cannot cross a 64K boundary, and must be contiguous in physical memory
-int8_t ide_dma_write(ata_bus_t *ata_bus, uint8_t device_index, uint32_t lba, const void *buffer, uint32_t sector_count)
+int8_t ide_dma_write(ata_bus_t *ata_bus, uint8_t device_index, uint64_t lba, const void *buffer, uint32_t sector_count)
 {
     assert(((uint32_t)buffer & 0x3) == 0);
     return ide_dma_io(ata_bus, device_index, 0, lba, (void *)buffer, sector_count);

@@ -92,7 +92,7 @@ typedef struct ata_command
 {
     uint8_t command;
     uint8_t feature;
-    uint16_t sector_count;
+    uint32_t sector_count;
     uint64_t lba;
 } ata_command_t;
 
@@ -142,7 +142,7 @@ typedef struct ata_bus
 int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_base, ata_bus_t *ata_bus);
 
 // Main read and write functions for IDE bus devices. Autommatically selects ATA or ATAPI based on the device type
-int8_t ide_dma_read(ata_bus_t *ata_bus, uint8_t device_index, uint32_t lba, void *buffer, uint32_t sector_count);
-int8_t ide_dma_write(ata_bus_t *ata_bus, uint8_t device_index, uint32_t lba, const void *buffer, uint32_t sector_count);
+int8_t ide_dma_read(ata_bus_t *ata_bus, uint8_t device_index, uint64_t lba, void *buffer, uint32_t sector_count);
+int8_t ide_dma_write(ata_bus_t *ata_bus, uint8_t device_index, uint64_t lba, const void *buffer, uint32_t sector_count);
 
 #endif // ATA_H
