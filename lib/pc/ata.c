@@ -480,7 +480,7 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
             ide_device->atapi.total_sector_count = 0;
         }
 
-        error = ata_busy_wait(ata_bus);
+        error = ata_wait_drq(ata_bus);
         if (error) {
             ata_set_irq_en(ata_bus, 1);
             continue;
@@ -488,75 +488,75 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
 
         ide_device->is_present = 1;
 
-        // Read in the identify data and pull out some key information
-        for (uint16_t j = 0; j < 256; j++) {
-            uint16_t wtemp = inw(ata_bus->io_base + ATA_IO_DATA);
-            uint8_t *btemp = (uint8_t *)&wtemp;
+        // Read in the identify data block in one burst
+        uint16_t id[256];
+        insw(ata_bus->io_base + ATA_IO_DATA, id, 256);
 
-            // UDMA information
-            if (j == 88) {
-                ide_device->selected_udma_mode = (wtemp >> 8) & 0xFF;
-                ide_device->supported_udma_mode = (wtemp & 0xFF);
+        // UDMA information
+        ide_device->selected_udma_mode = (id[88] >> 8) & 0xFF;
+        ide_device->supported_udma_mode = id[88] & 0xFF;
+
+        if (ide_device->is_atapi == 0) {
+            // 80 wire conductor information
+            // Bit 13 of word 93 is CBLID, it is pulled low on 80 wire conductors, otherwise high
+            if (!(id[93] & (1 << 13))) {
+                ata_bus->wire80 = 1;
+            } else {
+                ide_device->supported_udma_mode &= 0x03; // Restrict to UDMA 2 or less on 40 wire conductor
             }
 
-            if (ide_device->is_atapi == 0) {
-                // 80 wire conductor information
-                // it 13 of word 93 is CBLID, it is pulled low on 80 wire conductors, otherwise high
-                if (j == 93) {
-                    if (!(wtemp & (1 << 13))) {
-                        ata_bus->wire80 = 1;
-                    } else {
-                        ide_device->supported_udma_mode &= 0x03; // Restrict to UDMA 2 or less of 40 wire conductor
-                    }
+            //Xbox specific. Apparently the 80 wire conduct bit is not reliable on xbox, so we assume it is low always
+            ide_device->supported_udma_mode &= 0x03;
 
-                    //Xbox specific. Apparently the 80 wire conduct bit is not reliable on xbox, so we assume it is low always
-                    ide_device->supported_udma_mode &= 0x03;
-
-                    // We atleast need UDMA1. This shouldnt be zero
-                    if (ide_device->supported_udma_mode == 0) {
-                        ide_device->supported_udma_mode = 0x01;
-                    }
-                }
-
-                // LBA28 Addressing
-                else if (j == 60) {
-                    ide_device->ata.total_sector_count_lba28 = wtemp;
-                } else if (j == 61) {
-                    ide_device->ata.total_sector_count_lba28 |= wtemp << 16;
-
-                    ide_device->ata.total_sector_count_lba28 =
-                        BSWAP_LE32_TO_NATIVE(ide_device->ata.total_sector_count_lba28 + 1);
-                }
-
-                // LBA48 Addressing
-                else if (j == 100) {
-                    ide_device->ata.total_sector_count_lba48 = wtemp;
-                } else if (j == 101) {
-                    ide_device->ata.total_sector_count_lba48 |= wtemp << 16;
-                } else if (j == 102) {
-                    ide_device->ata.total_sector_count_lba48 |= (uint64_t)wtemp << 32;
-                } else if (j == 103) {
-                    ide_device->ata.total_sector_count_lba48 |= (uint64_t)wtemp << 48;
-
-                    ide_device->ata.total_sector_count_lba48 =
-                        BSWAP_LE64_TO_NATIVE(ide_device->ata.total_sector_count_lba48 + 1);
-                }
+            // We atleast need UDMA1. This shouldnt be zero
+            if (ide_device->supported_udma_mode == 0) {
+                ide_device->supported_udma_mode = 0x01;
             }
 
-            // Model, Serial, Firmware
-            if (j >= 27 && j < 47) {
-                uint8_t k = (j - 27) * 2;
-                ide_device->model[k] = btemp[1];
-                ide_device->model[k + 1] = btemp[0];
-            } else if (j >= 10 && j < 20) {
-                uint8_t k = (j - 10) * 2;
-                ide_device->serial[k] = btemp[1];
-                ide_device->serial[k + 1] = btemp[0];
-            } else if (j >= 23 && j < 27) {
-                uint8_t k = (j - 23) * 2;
-                ide_device->firmware[k] = btemp[1];
-                ide_device->firmware[k + 1] = btemp[0];
+            // LBA28 Addressing: Words 60-61 contain total user-addressable sectors
+            ide_device->ata.total_sector_count_lba28 = (uint32_t)id[60] | ((uint32_t)id[61] << 16);
+
+            // LBA48 Addressing: Words 100-103 contain total user-addressable sectors if Word 83 bit 10 is set
+            uint8_t lba48_supported = (id[83] & (1 << 10)) != 0;
+            if (lba48_supported) {
+                ide_device->ata.total_sector_count_lba48 =
+                    (uint64_t)id[100] |
+                    ((uint64_t)id[101] << 16) |
+                    ((uint64_t)id[102] << 32) |
+                    ((uint64_t)id[103] << 48);
+            } else {
+                ide_device->ata.total_sector_count_lba48 = ide_device->ata.total_sector_count_lba28;
             }
+        }
+
+        // Model (Words 27-46 = 40 characters)
+        for (uint8_t k = 0; k < 20; k++) {
+            ide_device->model[k * 2] = (uint8_t)(id[27 + k] >> 8);
+            ide_device->model[k * 2 + 1] = (uint8_t)(id[27 + k] & 0xFF);
+        }
+        ide_device->model[40] = '\0';
+        for (int8_t k = 39; k >= 0 && ide_device->model[k] == ' '; k--) {
+            ide_device->model[k] = '\0';
+        }
+
+        // Serial (Words 10-19 = 20 characters)
+        for (uint8_t k = 0; k < 10; k++) {
+            ide_device->serial[k * 2] = (uint8_t)(id[10 + k] >> 8);
+            ide_device->serial[k * 2 + 1] = (uint8_t)(id[10 + k] & 0xFF);
+        }
+        ide_device->serial[20] = '\0';
+        for (int8_t k = 19; k >= 0 && ide_device->serial[k] == ' '; k--) {
+            ide_device->serial[k] = '\0';
+        }
+
+        // Firmware (Words 23-26 = 8 characters)
+        for (uint8_t k = 0; k < 4; k++) {
+            ide_device->firmware[k * 2] = (uint8_t)(id[23 + k] >> 8);
+            ide_device->firmware[k * 2 + 1] = (uint8_t)(id[23 + k] & 0xFF);
+        }
+        ide_device->firmware[8] = '\0';
+        for (int8_t k = 7; k >= 0 && ide_device->firmware[k] == ' '; k--) {
+            ide_device->firmware[k] = '\0';
         }
 
         // Enable fastest UDMA mode supported
