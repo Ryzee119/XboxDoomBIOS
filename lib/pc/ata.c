@@ -6,10 +6,10 @@
 #include "cpu.h"
 #include "io.h"
 #include "lock.h"
-#include "pci.h"
+#include <assert.h>
 #include <stdint.h>
-
-atomic_flag lock;
+#include <stdio.h>
+#include <string.h>
 
 #define outb(port, val) io_output_byte(port, val)
 #define inb(port)       io_input_byte(port)
@@ -59,14 +59,17 @@ static int8_t ata_busy_wait(ata_bus_t *ata_bus)
     uint32_t timeout_start = system_tick();
     do {
         status = inb(ata_bus->ctrl_base + ATA_CTRL_ALT_STATUS);
-        if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
-            return -1;
+        if (!(status & ATA_STATUS_BSY)) {
+            if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
+                return -1;
+            }
+            return 0;
         }
         system_yield(0);
         timeout = system_tick() - timeout_start;
-    } while ((status & ATA_STATUS_BSY) && !(status & ATA_STATUS_DRQ) && (timeout < ATA_BSY_TIMEOUT));
+    } while (timeout < ATA_BSY_TIMEOUT);
 
-    return (timeout >= ATA_BSY_TIMEOUT) ? -1 : 0;
+    return -1;
 }
 
 static int8_t ata_wait_drq(ata_bus_t *ata_bus)
@@ -92,14 +95,11 @@ static int8_t ata_wait_drq(ata_bus_t *ata_bus)
 // This will reset both ATA devices on the bus
 static void ata_bus_reset(ata_bus_t *ata_bus)
 {
-    uint8_t control_register = inb(ata_bus->ctrl_base);
-    control_register |= ATA_CTRL_SOFTWARE_RESET;
-    outb(ata_bus->ctrl_base, control_register);
+    outb(ata_bus->ctrl_base, ATA_CTRL_SOFTWARE_RESET);
 
     system_yield(1); // > 5us
 
-    control_register &= ~ATA_CTRL_SOFTWARE_RESET;
-    outb(ata_bus->ctrl_base, control_register);
+    outb(ata_bus->ctrl_base, 0x00);
 
     system_yield(2);
 
@@ -107,17 +107,12 @@ static void ata_bus_reset(ata_bus_t *ata_bus)
 
     // On reset, drive is reset to master automatically, but set it explicitly
     outb(ata_bus->io_base + ATA_IO_DRIVE, ATA_IO_DRIVE_SELECT_0);
+    ata_io_400ns(ata_bus);
 }
 
 static void ata_set_irq_en(ata_bus_t *ata_bus, uint8_t enable)
 {
-    uint8_t control_register = inb(ata_bus->ctrl_base);
-    if (enable) {
-        control_register &= ~ATA_CTRL_NIEN;
-    } else {
-        control_register |= ATA_CTRL_NIEN;
-    }
-    outb(ata_bus->ctrl_base, control_register);
+    outb(ata_bus->ctrl_base, enable ? 0x00 : ATA_CTRL_NIEN);
 }
 
 static int8_t ata_issue_command(ata_bus_t *ata_bus, uint8_t device_index, ata_command_t *ata_command)
@@ -142,6 +137,7 @@ static int8_t ata_issue_command(ata_bus_t *ata_bus, uint8_t device_index, ata_co
 
     // Select the drive, if changed wait for it to be ready
     outb(ata_bus->io_base + ATA_IO_DRIVE, drive_base);
+    ata_io_400ns(ata_bus);
     if ((old_drive_base ^ drive_base) & (1 << 4)) {
         error = ata_busy_wait(ata_bus);
         if (error) {
@@ -293,7 +289,7 @@ static int8_t atapi_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, void 
     }
 
     int8_t error = 0;
-    spinlock_acquire(&lock);
+    spinlock_acquire(&ata_bus->lock);
 
     if (buffer != NULL && buffer_length > 0) {
         error = busmaster_dma_setup(ata_bus, buffer, read, buffer_length);
@@ -334,7 +330,7 @@ static int8_t atapi_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, void 
     error = busmaster_dma_wait(ata_bus, buffer_length);
 
 bail_out:
-    spinlock_release(&lock);
+    spinlock_release(&ata_bus->lock);
     return error;
 }
 
@@ -360,7 +356,7 @@ static int8_t ata_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, ata_com
     }
     ata_command->sector_count = sector_count;
 
-    spinlock_acquire(&lock);
+    spinlock_acquire(&ata_bus->lock);
 
     // 1. Arm Bus Master DMA controller first
     error = busmaster_dma_setup(ata_bus, buffer, read, buffer_length);
@@ -394,7 +390,7 @@ static int8_t ata_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, ata_com
     }
 
 bail_out:
-    spinlock_release(&lock);
+    spinlock_release(&ata_bus->lock);
     return error;
 }
 
