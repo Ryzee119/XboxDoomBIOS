@@ -21,6 +21,7 @@ static int8_t smbus_io(uint8_t address, uint8_t command, void *data, uint8_t dat
     uint32_t actual_length = data_len;
     uint8_t *data8 = (uint8_t *)data;
     uint16_t *data16 = (uint16_t *)data;
+    int retries = 5;
 
     if (read) {
         read = 1;
@@ -29,8 +30,14 @@ static int8_t smbus_io(uint8_t address, uint8_t command, void *data, uint8_t dat
 smbus_collision_retry:
     spinlock_acquire(&lock);
 
-    while (io_input_word(SMBUS_STATUS) & SMBUS_STATUS_BUSY) {
+    int timeout = 1000;
+    while ((io_input_word(SMBUS_STATUS) & SMBUS_STATUS_BUSY) && --timeout > 0) {
         system_yield(0);
+    }
+    if (timeout == 0) {
+        io_output_word(SMBUS_STATUS, 0xFFFF);
+        spinlock_release(&lock);
+        return SMBUS_RETURN_ERROR;
     }
 
     io_output_byte(SMBUS_ADDRESS, address | read);
@@ -73,8 +80,14 @@ smbus_collision_retry:
     io_output_byte(SMBUS_CONTROL, transfer_type | SMBUS_CONTROL_START);
 
     // Wait for completion
-    while (io_input_word(SMBUS_STATUS) & SMBUS_STATUS_BUSY) {
+    timeout = 1000;
+    while ((io_input_word(SMBUS_STATUS) & SMBUS_STATUS_BUSY) && --timeout > 0) {
         system_yield(1);
+    }
+    if (timeout == 0) {
+        io_output_word(SMBUS_STATUS, 0xFFFF);
+        spinlock_release(&lock);
+        return SMBUS_RETURN_ERROR;
     }
 
     // Get the transfer status
@@ -83,7 +96,7 @@ smbus_collision_retry:
 
     if (status & SMBUS_STATUS_ERROR) {
         spinlock_release(&lock);
-        if (status & SMBUS_STATUS_COLLISION) {
+        if ((status & SMBUS_STATUS_COLLISION) && --retries > 0) {
             goto smbus_collision_retry;
         }
 #if (0)
