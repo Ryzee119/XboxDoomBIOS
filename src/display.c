@@ -12,7 +12,7 @@ void display_init()
     int bpp = 4;
 
     const xbox_eeprom_t *eeprom = xbox_eeprom_get();
-    if (eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_WIDESCREEN) {
+    if (eeprom != NULL && (eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_WIDESCREEN)) {
         width = 720;
     }
 

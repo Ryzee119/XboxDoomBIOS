@@ -35,8 +35,14 @@ const xbox_eeprom_t *xbox_eeprom_get()
 
 int16_t xbox_eeprom_set(xbox_eeprom_t *eeprom)
 {
+    if (eeprom == NULL) {
+        return -1;
+    }
     int16_t total_written = 0;
     uint8_t *cached_eeprom8 = (uint8_t *)xbox_eeprom_get();
+    if (cached_eeprom8 == NULL) {
+        return -1;
+    }
 
     for (uint32_t i = 0; i < 256; i++) {
         uint8_t *eeprom8 = (uint8_t *)eeprom;
@@ -51,6 +57,8 @@ int16_t xbox_eeprom_set(xbox_eeprom_t *eeprom)
 
         cached_eeprom8[i] = eeprom8[i];
         total_written += 1;
+        // 24C02 EEPROM internal write cycle time (max 5ms)
+        system_yield(5);
     }
 
     return total_written;

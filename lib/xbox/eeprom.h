@@ -59,7 +59,7 @@ typedef struct xbox_eeprom
         uint32_t dvd_region;                     // 0xBC
     } user_settings;                             //
                                                  //
-    uint8_t unknown[0xFF - 0xC0];                // 0xC0
+    uint8_t unknown[0x100 - 0xC0];               // 0xC0
 } xbox_eeprom_t;
 
 #define XBOX_EEPROM_VIDEO_STANDARD_MASK   0x00000F00
