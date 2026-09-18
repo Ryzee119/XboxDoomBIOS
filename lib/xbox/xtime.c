@@ -13,18 +13,13 @@ uint32_t xbox_timer_query_performance_frequency(void)
 
 uint32_t xbox_timer_query_performance_counter(void)
 {
-    return io_input_dword(XBOX_ACPI_TIMER_PORT);
+    return io_input_dword(XBOX_ACPI_TIMER_PORT) & 0x00FFFFFF;
 }
 
 void xbox_timer_spin_wait(uint32_t ticks)
 {
     uint32_t start = xbox_timer_query_performance_counter();
-    uint32_t end = start + ticks;
-    if (end < start) {
-        while (xbox_timer_query_performance_counter() > start)
-            ;
-    }
-    while (xbox_timer_query_performance_counter() < end)
+    while (((xbox_timer_query_performance_counter() - start) & 0x00FFFFFF) < ticks)
         ;
 }
 
