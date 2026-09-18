@@ -232,9 +232,16 @@ static void xbox_gpu_set_output_enable(uint8_t enabled)
 void xbox_video_init(uint32_t mode_coding, xbox_framebuffer_format_t format, void *frame_buffer)
 {
     const VIDEO_MODE_SETTING *mode_settings = xbox_video_get_settings(mode_coding);
+    uint8_t pramdac_index = ((mode_coding & 0x00FF0000) >> 16);
+    uint8_t pcrtc_index = (mode_coding & 0x0000FF00) >> 8;
 
-    const uint8_t pramdac_index = ((mode_coding & 0x00FF0000) >> 16);
-    const uint8_t pcrtc_index = (mode_coding & 0x0000FF00) >> 8;
+    if (mode_settings == NULL || pramdac_index < 1 || pramdac_index > 15 || pcrtc_index < 1 || pcrtc_index > 15) {
+        mode_coding = 0x04010101;
+        mode_settings = xbox_video_get_settings(mode_coding);
+        pramdac_index = ((mode_coding & 0x00FF0000) >> 16);
+        pcrtc_index = (mode_coding & 0x0000FF00) >> 8;
+    }
+
     const uint32_t bpp = (format == ARGB8888) ? 4 : 2;
     const uint32_t width = mode_settings->width;
     const uint32_t pitch = (width * bpp) >> 3;
@@ -736,19 +743,21 @@ const VIDEO_MODE_SETTING *xbox_video_get_settings(uint32_t mode_coding)
 uint32_t xbox_video_get_suitable_mode_coding(uint32_t width, uint32_t height)
 {
     const xbox_eeprom_t *eeprom = xbox_eeprom_get();
-    const xbox_video_region_t video_region = eeprom->factory_settings.video_standard & XBOX_EEPROM_VIDEO_STANDARD_MASK;
+    const xbox_video_region_t video_region =
+        eeprom ? (eeprom->factory_settings.video_standard & XBOX_EEPROM_VIDEO_STANDARD_MASK)
+               : XBOX_VIDEO_REGION_NTSCM;
     const uint32_t is_pal =
         (video_region == XBOX_EEPROM_VIDEO_STANDARD_PAL_I) || (video_region == XBOX_EEPROM_VIDEO_STANDARD_PAL_M);
-    const uint8_t allow_480p = (eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_480P) > 0;
-    const uint8_t allow_720p = (eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_720P) > 0;
-    const uint8_t allow_1080i = (eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_1080I) > 0;
-    xbox_av_pack_t avpack;
+    const uint8_t allow_480p = (eeprom != NULL) && ((eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_480P) > 0);
+    const uint8_t allow_720p = (eeprom != NULL) && ((eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_720P) > 0);
+    const uint8_t allow_1080i = (eeprom != NULL) && ((eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_1080I) > 0);
+    xbox_av_pack_t avpack = XBOX_AV_PACK_STANDARD;
     uint8_t refresh = 60;
 
     xbox_smc_get_avpack(&avpack);
 
     if (video_region == XBOX_VIDEO_REGION_PAL &&
-        !(eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_60HZ)) {
+        (eeprom == NULL || !(eeprom->user_settings.video_settings & XBOX_EEPROM_VIDEO_SETTINGS_60HZ))) {
         refresh = 50;
     }
 
@@ -794,7 +803,7 @@ uint32_t xbox_video_get_suitable_mode_coding(uint32_t width, uint32_t height)
         return video_modes[i].mode;
     }
 
-    return 0;
+    return 0x04010101;
 }
 
 void apply_all_video_modes(void *fb)
