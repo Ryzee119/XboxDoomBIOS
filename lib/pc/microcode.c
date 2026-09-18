@@ -329,10 +329,13 @@ void cpu_update_microcode(void)
     // Iterate through microcode updates
     for (uint32_t i = 0; i < 2; i++) {
         if ((m[i].sig == sig) && (m[i].pf == pf)) {
-            cpu_write_msr(IA32_BIOS_UPDT_TRIG, (uint32_t)&m[i].bits, 0);
-            __asm__ __volatile__("cpuid" : : : "eax", "ebx", "ecx", "edx");
+            cpu_write_msr(IA32_BIOS_UPDT_TRIG, (uint32_t)&m[i], 0);
+            cpu_write_msr(IA32_BIOS_SIGN_ID, 0, 0);
+            uint32_t unused_eax, unused_ebx, unused_ecx, unused_edx;
+            cpu_read_cpuid(CPUID_VERSION_INFO, &unused_eax, &unused_ebx, &unused_ecx, &unused_edx);
             cpu_read_msr(IA32_BIOS_SIGN_ID, &val[0], &val[1]);
             found = 1;
+            break;
         }
     }
 
