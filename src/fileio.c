@@ -4,7 +4,9 @@
 
 int open(const char *path, int flags, ...)
 {
-    assert(path[1] == ':');
+    if (path == NULL || path[0] == '\0' || path[1] != ':') {
+        return -1;
+    }
     char drive_letter = path[0];
 
     file_io_driver_t *driver = fileio_find_driver(drive_letter);
@@ -33,6 +35,9 @@ int open(const char *path, int flags, ...)
 int close(int fd)
 {
     file_handle_t *fp = (file_handle_t *)fd;
+    if (fp == NULL || fp->driver == NULL) {
+        return -1;
+    }
     xSemaphoreTake(fp->driver->mutex, portMAX_DELAY);
     fp->driver->io->close(fp->user_handle);
     xSemaphoreGive(fp->driver->mutex);
@@ -43,6 +48,9 @@ int close(int fd)
 ssize_t read(int fd, void *buffer, size_t count)
 {
     file_handle_t *fp = (file_handle_t *)fd;
+    if (fp == NULL || fp->driver == NULL) {
+        return -1;
+    }
     // printf_ts("Reading %d bytes from %08x -> ", count, fp);
     memset(buffer, 0, count);
     xSemaphoreTake(fp->driver->mutex, portMAX_DELAY);
@@ -66,12 +74,21 @@ ssize_t read(int fd, void *buffer, size_t count)
 ssize_t write(int fd, const void *buffer, size_t count)
 {
     file_handle_t *fp = (file_handle_t *)fd;
-    return fp->driver->io->write(fp->user_handle, buffer, count);
+    if (fp == NULL || fp->driver == NULL) {
+        return -1;
+    }
+    xSemaphoreTake(fp->driver->mutex, portMAX_DELAY);
+    ssize_t sz = fp->driver->io->write(fp->user_handle, buffer, count);
+    xSemaphoreGive(fp->driver->mutex);
+    return sz;
 }
 
 off_t lseek(int fd, off_t offset, int whence)
 {
     file_handle_t *fp = (file_handle_t *)fd;
+    if (fp == NULL || fp->driver == NULL) {
+        return -1;
+    }
     xSemaphoreTake(fp->driver->mutex, portMAX_DELAY);
     off_t off = fp->driver->io->lseek(fp->user_handle, offset, whence);
     xSemaphoreGive(fp->driver->mutex);
@@ -81,7 +98,9 @@ off_t lseek(int fd, off_t offset, int whence)
 // No dirent in picolibc, so we need to define our own dirent-like functions
 directory_handle_t *opendir(const char *path)
 {
-    assert(path[1] == ':');
+    if (path == NULL || path[0] == '\0' || path[1] != ':') {
+        return NULL;
+    }
     char drive_letter = path[0];
     file_io_driver_t *driver = fileio_find_driver(drive_letter);
     if (driver == NULL) {
@@ -108,6 +127,9 @@ directory_handle_t *opendir(const char *path)
 
 directory_entry_t *readdir(directory_handle_t *dir)
 {
+    if (dir == NULL || dir->driver == NULL) {
+        return NULL;
+    }
     xSemaphoreTake(dir->driver->mutex, portMAX_DELAY);
     directory_entry_t *entry = dir->driver->io->readdir(dir->user_handle, &dir->entry);
     xSemaphoreGive(dir->driver->mutex);
@@ -116,6 +138,9 @@ directory_entry_t *readdir(directory_handle_t *dir)
 
 void closedir(directory_handle_t *dir)
 {
+    if (dir == NULL || dir->driver == NULL) {
+        return;
+    }
     xSemaphoreTake(dir->driver->mutex, portMAX_DELAY);
     dir->driver->io->closedir(dir->user_handle);
     xSemaphoreGive(dir->driver->mutex);
@@ -149,7 +174,6 @@ file_io_driver_t *fileio_find_driver(char drive_letter)
 int8_t fileio_register_driver(const char drive_letter, fs_io_t *io, fs_io_ll_t *io_ll, void *arg, void *ll_arg)
 {
     file_io_driver_t *driver = pvPortMalloc(sizeof(file_io_driver_t));
-    file_io_driver_t *prev = NULL;
     if (driver == NULL) {
         return -1;
     }
@@ -166,8 +190,29 @@ int8_t fileio_register_driver(const char drive_letter, fs_io_t *io, fs_io_ll_t *
     }
     xSemaphoreGive(driver->mutex);
 
-    vTaskSuspendAll();
+    user_fs_ll_handle_t *ll_handle = driver->io_ll->init(driver, ll_arg);
+    if (ll_handle == NULL) {
+        printf_ts("Failed to init low-level driver\n");
+        vSemaphoreDelete(driver->mutex);
+        vPortFree(driver);
+        return -1;
+    }
+    driver->ll_handle = ll_handle;
 
+    user_fs_handle_t *handle = driver->io->init(driver, arg);
+    if (handle == NULL) {
+        printf_ts("Failed to init filesystem driver\n");
+        if (driver->io_ll->deinit != NULL) {
+            driver->io_ll->deinit(driver->ll_handle);
+        }
+        vSemaphoreDelete(driver->mutex);
+        vPortFree(driver);
+        return -1;
+    }
+    driver->handle = handle;
+
+    // Only expose driver in active driver list after full initialization
+    vTaskSuspendAll();
     if (fs_driver_head == NULL) {
         fs_driver_head = driver;
     } else {
@@ -175,38 +220,9 @@ int8_t fileio_register_driver(const char drive_letter, fs_io_t *io, fs_io_ll_t *
         while (p->next != NULL) {
             p = p->next;
         }
-        prev = p;
         p->next = driver;
     }
-
     xTaskResumeAll();
-
-    user_fs_ll_handle_t *ll_handle = driver->io_ll->init(driver, ll_arg);
-    if (ll_handle == NULL) {
-        printf_ts("Failed to init low-level driver\n");
-        vSemaphoreDelete(driver->mutex);
-        vPortFree(driver);
-        if (prev != NULL) {
-            prev->next = NULL;
-        } else {
-            fs_driver_head = NULL;
-        }
-        return -1;
-    }
-    driver->ll_handle = ll_handle;
-
-    user_fs_handle_t *handle = driver->io->init(driver, arg);
-    if (handle == NULL) {
-        vSemaphoreDelete(driver->mutex);
-        vPortFree(driver);
-        if (prev != NULL) {
-            prev->next = NULL;
-        } else {
-            fs_driver_head = NULL;
-        }
-        return -1;
-    }
-    driver->handle = handle;
 
     return 0;
 }
@@ -214,7 +230,6 @@ int8_t fileio_register_driver(const char drive_letter, fs_io_t *io, fs_io_ll_t *
 int8_t fileio_unregister_driver(const char drive_letter)
 {
     int8_t status = -1;
-
     const char drive_letter_upper = toupper(drive_letter);
 
     vTaskSuspendAll();
@@ -229,19 +244,26 @@ int8_t fileio_unregister_driver(const char drive_letter)
         driver = driver->next;
     }
 
-    xTaskResumeAll();
-
-    if (driver) {
-        driver->io->deinit(driver->handle);
-        driver->io_ll->deinit(driver->ll_handle);
+    if (driver != NULL) {
+        // Unlink from active driver list immediately while scheduler is suspended
         if (prev == NULL) {
             fs_driver_head = driver->next;
         } else {
             prev->next = driver->next;
         }
+    }
 
-        // Sync then free
+    xTaskResumeAll();
+
+    if (driver != NULL) {
+        // Wait for any in-flight operations on this driver to finish
         xSemaphoreTake(driver->mutex, portMAX_DELAY);
+        if (driver->io != NULL && driver->io->deinit != NULL) {
+            driver->io->deinit(driver->handle);
+        }
+        if (driver->io_ll != NULL && driver->io_ll->deinit != NULL) {
+            driver->io_ll->deinit(driver->ll_handle);
+        }
         xSemaphoreGive(driver->mutex);
         vSemaphoreDelete(driver->mutex);
         vPortFree(driver);
