@@ -31,7 +31,7 @@ struct prd_entry
 
 static __inline void insw(uint16_t __port, void *__buf, unsigned long __n)
 {
-    __asm__ __volatile__("cld; rep; insw" : "+D"(__buf), "+c"(__n) : "d"(__port));
+    __asm__ __volatile__("cld; rep; insw" : "+D"(__buf), "+c"(__n) : "d"(__port) : "memory");
 }
 
 static __inline__ void outsw(uint16_t __port, const void *__buf, unsigned long __n)
@@ -69,6 +69,26 @@ static int8_t ata_busy_wait(ata_bus_t *ata_bus)
     return (timeout >= ATA_BSY_TIMEOUT) ? -1 : 0;
 }
 
+static int8_t ata_wait_drq(ata_bus_t *ata_bus)
+{
+    uint8_t status;
+    uint32_t timeout;
+    uint32_t timeout_start = system_tick();
+    do {
+        status = inb(ata_bus->ctrl_base + ATA_CTRL_ALT_STATUS);
+        if (!(status & ATA_STATUS_BSY) && (status & ATA_STATUS_DRQ)) {
+            return 0;
+        }
+        if (!(status & ATA_STATUS_BSY) && (status & (ATA_STATUS_ERR | ATA_STATUS_DF))) {
+            return -1;
+        }
+        system_yield(0);
+        timeout = system_tick() - timeout_start;
+    } while (timeout < ATA_BSY_TIMEOUT);
+
+    return -1;
+}
+
 // This will reset both ATA devices on the bus
 static void ata_bus_reset(ata_bus_t *ata_bus)
 {
@@ -100,7 +120,7 @@ static void ata_set_irq_en(ata_bus_t *ata_bus, uint8_t enable)
     outb(ata_bus->ctrl_base, control_register);
 }
 
-static int8_t ata_send_command(ata_bus_t *ata_bus, uint8_t device_index, ata_command_t *ata_command)
+static int8_t ata_issue_command(ata_bus_t *ata_bus, uint8_t device_index, ata_command_t *ata_command)
 {
     const ide_device_t *ide_device = (device_index == 0) ? &ata_bus->master : &ata_bus->slave;
     const uint8_t old_drive_base = inb(ata_bus->io_base + ATA_IO_DRIVE);
@@ -137,16 +157,6 @@ static int8_t ata_send_command(ata_bus_t *ata_bus, uint8_t device_index, ata_com
         outb(ata_bus->io_base + ATA_IO_LBA_HIGH, (uint8_t)((ata_command->lba >> 40) & 0xFF));
     }
 
-#if (0)
-    printf("[ATA] ATA_IO_DRIVE %02x\n", drive_base);
-    printf("[ATA] FEATURE %02x\n", ata_command->feature);
-    printf("[ATA] SECTOR_COUNT %d\n", ata_command->sector_count);
-    printf("[ATA] ATA_IO_LBA_LOW %02x\n", (uint8_t)((lba >> 0) & 0xFF));
-    printf("[ATA] ATA_IO_LBA_MID %02x\n", (uint8_t)((lba >> 8) & 0xFF));
-    printf("[ATA] ATA_IO_LBA_HIGH %02x\n", (uint8_t)((lba >> 16) & 0xFF));
-    printf("[ATA] ATA_IO_COMMAND %02x\n", ata_command->command);
-#endif
-
     outb(ata_bus->io_base + ATA_IO_FEATURES, ata_command->feature);
     outb(ata_bus->io_base + ATA_IO_SECTOR_COUNT, ata_command->sector_count & 0xFF);
     outb(ata_bus->io_base + ATA_IO_LBA_LOW, (uint8_t)((ata_command->lba >> 0) & 0xFF));
@@ -156,6 +166,16 @@ static int8_t ata_send_command(ata_bus_t *ata_bus, uint8_t device_index, ata_com
     outb(ata_bus->io_base + ATA_IO_COMMAND, ata_command->command);
     ata_io_400ns(ata_bus);
 
+    return 0;
+}
+
+static int8_t ata_send_command(ata_bus_t *ata_bus, uint8_t device_index, ata_command_t *ata_command)
+{
+    int8_t error = ata_issue_command(ata_bus, device_index, ata_command);
+    if (error) {
+        return error;
+    }
+
     if (inb(ata_bus->ctrl_base + ATA_CTRL_ALT_STATUS) & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
         return -1;
     }
@@ -163,42 +183,8 @@ static int8_t ata_send_command(ata_bus_t *ata_bus, uint8_t device_index, ata_com
     return ata_busy_wait(ata_bus);
 }
 
-static int8_t atapi_send_command(ata_bus_t *ata_bus, uint8_t device_index, ata_command_t *ata_command,
-                                 uint8_t atapi_command[ATAPI_CMD_SIZE])
+static int8_t busmaster_dma_setup(ata_bus_t *ata_bus, void *buffer, uint8_t read, uint32_t bytes_to_transfer)
 {
-    const ide_device_t *ide_device = (device_index == 0) ? &ata_bus->master : &ata_bus->slave;
-    int8_t error = 0;
-    if (ide_device->is_present == 0) {
-        return -1;
-    }
-    error = ata_send_command(ata_bus, device_index, ata_command);
-    if (error) {
-        goto bail_out;
-    }
-
-    // Send the atapi command
-    outsw(ata_bus->io_base + ATA_IO_DATA, atapi_command, ATAPI_CMD_SIZE / 2);
-
-    // Wait for the drive to be ready
-    error = ata_busy_wait(ata_bus);
-    if (error) {
-        goto bail_out;
-    }
-
-    // Check for errors
-    uint8_t status = inb(ata_bus->ctrl_base + ATA_CTRL_ALT_STATUS);
-    if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
-        error = -1;
-    }
-
-bail_out:
-    return error;
-}
-
-static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t read, uint32_t bytes_to_transfer)
-{
-    int8_t error = 0;
-
     // Set up the PRD Table chain. Align to 32 bytes to ensure it never crosses a 64KB boundary.
     static struct prd_entry prd_table[ATA_PRD_ENTRIES_MAX] __attribute__((aligned(32)));
     uint32_t bytes_to_process = bytes_to_transfer;
@@ -243,10 +229,19 @@ static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t r
     outb(ata_bus->busmaster_base + ATA_BUSMASTER_DMA_STATUS,
          ATA_BUSMASTER_DMA_STATUS_INTERRUPT | ATA_BUSMASTER_DMA_STATUS_ERROR);
 
-    // Start the DMA transfer
+    return 0;
+}
+
+static void busmaster_dma_start(ata_bus_t *ata_bus)
+{
+    uint8_t command = inb(ata_bus->busmaster_base + ATA_BUSMASTER_DMA_COMMAND);
     command |= ATA_BUSMASTER_DMA_COMMAND_START;
     outb(ata_bus->busmaster_base + ATA_BUSMASTER_DMA_COMMAND, command);
+}
 
+static int8_t busmaster_dma_wait(ata_bus_t *ata_bus, uint32_t bytes_to_transfer)
+{
+    int8_t error = 0;
     // Wait for the transfer to complete (timeout 5s + 100ms per MB)
     const uint32_t timeout_time = 5000 + (bytes_to_transfer / 1024) * 100;
     const uint32_t timeout_start = system_tick();
@@ -261,6 +256,7 @@ static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t r
     } while (timeout < timeout_time);
 
     // Make sure the DMA transfer is stopped
+    uint8_t command = inb(ata_bus->busmaster_base + ATA_BUSMASTER_DMA_COMMAND);
     command &= ~ATA_BUSMASTER_DMA_COMMAND_START;
     outb(ata_bus->busmaster_base + ATA_BUSMASTER_DMA_COMMAND, command);
 
@@ -277,7 +273,7 @@ static int8_t busmaster_dma_transfer(ata_bus_t *ata_bus, void *buffer, uint8_t r
     }
 
     uint8_t device_status = inb(ata_bus->io_base + ATA_IO_STATUS);
-    if (device_status & ATA_STATUS_ERR) {
+    if (device_status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
         error = -1;
     }
 
@@ -299,24 +295,43 @@ static int8_t atapi_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, void 
     int8_t error = 0;
     spinlock_acquire(&lock);
 
+    if (buffer != NULL && buffer_length > 0) {
+        error = busmaster_dma_setup(ata_bus, buffer, read, buffer_length);
+        if (error) {
+            goto bail_out;
+        }
+    }
+
+    uint16_t byte_count = (buffer != NULL) ? ((buffer_length > 0xFFFE) ? 0xFFFE : (uint16_t)buffer_length) : 0;
     ata_command_t ata_command = {
         .command = ATA_CMD_PACKET,
-        .lba = ide_device->sector_size << 8, // For ATAPI, the sector size is set in the LBA mid and high field
+        .lba = ((uint64_t)byte_count) << 8,
         .sector_count = 0,
         .feature = (buffer == NULL) ? 0x00 : 0x01, // Enable DMA
     };
 
-    error = atapi_send_command(ata_bus, device_index, &ata_command, (uint8_t *)atapi_command);
+    error = ata_issue_command(ata_bus, device_index, &ata_command);
     if (error) {
         goto bail_out;
     }
 
-    // We are done if no data is being transferred
-    if (buffer == NULL) {
+    // Wait for the drive to assert DRQ before writing packet
+    error = ata_wait_drq(ata_bus);
+    if (error) {
         goto bail_out;
     }
 
-    error = busmaster_dma_transfer(ata_bus, buffer, read, buffer_length);
+    // Send the atapi command packet
+    outsw(ata_bus->io_base + ATA_IO_DATA, atapi_command, ATAPI_CMD_SIZE / 2);
+
+    // We are done if no data is being transferred
+    if (buffer == NULL || buffer_length == 0) {
+        error = ata_busy_wait(ata_bus);
+        goto bail_out;
+    }
+
+    busmaster_dma_start(ata_bus);
+    error = busmaster_dma_wait(ata_bus, buffer_length);
 
 bail_out:
     spinlock_release(&lock);
@@ -343,16 +358,30 @@ static int8_t ata_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, ata_com
     } else if (sector_count == 65536 && is_lba48) {
         sector_count = 0;
     }
+    ata_command->sector_count = sector_count;
 
     spinlock_acquire(&lock);
 
-    // Need a start ata command to set the drive, lba, etc
-    error = ata_send_command(ata_bus, device_index, ata_command);
+    // 1. Arm Bus Master DMA controller first
+    error = busmaster_dma_setup(ata_bus, buffer, read, buffer_length);
     if (error) {
         goto bail_out;
     }
 
-    error = busmaster_dma_transfer(ata_bus, buffer, read, buffer_length);
+    // 2. Issue the ATA DMA command (does not busy wait)
+    error = ata_issue_command(ata_bus, device_index, ata_command);
+    if (error) {
+        goto bail_out;
+    }
+
+    // 3. Start Bus Master DMA engine
+    busmaster_dma_start(ata_bus);
+
+    // 4. Wait for DMA transfer to complete
+    error = busmaster_dma_wait(ata_bus, buffer_length);
+    if (error) {
+        goto bail_out;
+    }
 
     if (read == 0) {
         ata_command_t flush_cmd = {
