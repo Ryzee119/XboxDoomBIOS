@@ -135,17 +135,20 @@ void XAudioInit(int sampleSizeInBits, int numChannels, XAudioCallback callback, 
     pac97device->mmio[0x12C >> 2] |= 2;
 
     // wait until the chip is finished resetting...
-    while (!(pac97device->mmio[0x130 >> 2] & 0x100))
+    uint32_t timeout = 100000;
+    while (!(pac97device->mmio[0x130 >> 2] & 0x100) && --timeout > 0)
         ;
 
     // reset bus master registers for analog output
     pb[0x11B] = (1 << 4) | (1 << 3) | (1 << 2) | (1 << 1);
-    while (pb[0x11B] & (1 << 1))
+    timeout = 100000;
+    while ((pb[0x11B] & (1 << 1)) && --timeout > 0)
         ;
 
     // reset bus master registers for digital output
     pb[0x17B] = (1 << 4) | (1 << 3) | (1 << 2) | (1 << 1);
-    while (pb[0x17B] & (1 << 1))
+    timeout = 100000;
+    while ((pb[0x17B] & (1 << 1)) && --timeout > 0)
         ;
 
     // clear all interrupts
