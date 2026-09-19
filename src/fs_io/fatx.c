@@ -15,7 +15,10 @@ typedef struct fatx_fs_file
     struct fatx_attr attr;
     int flags;
     char path[255];
-    uint8_t sector_cache[ATA_SECTOR_SIZE];
+    uint32_t current_cluster;
+    uint32_t current_cluster_offset;
+    uint8_t cluster_valid;
+    uint8_t attr_dirty;
 } fatx_file_t;
 
 typedef struct fatx_fs_dir
@@ -141,51 +144,238 @@ user_file_handle_t *fatx_fs_open(user_fs_handle_t *handle, const char *path, int
         return NULL;
     }
 
+    file->current_cluster = file->attr.first_cluster;
+    file->current_cluster_offset = 0;
+    file->cluster_valid = (file->attr.first_cluster != 0);
+    file->attr_dirty = 0;
+
     // On append, cursor moved to end of the file
     if (flags & O_APPEND) {
         file->cursor = file->attr.file_size;
+        file->cluster_valid = 0;
     }
 
     return (user_file_handle_t *)file;
 }
 
+static int fatx_file_resolve_cluster(fatx_file_t *file, size_t *out_cluster, uint32_t *out_offset, bool alloc)
+{
+    uint32_t cursor = file->cursor;
+    uint32_t bpc = file->fs->bytes_per_cluster;
+
+    // Fast-path 1: cursor is within currently cached cluster
+    if (file->cluster_valid &&
+        cursor >= file->current_cluster_offset &&
+        cursor < file->current_cluster_offset + bpc)
+    {
+        *out_cluster = file->current_cluster;
+        *out_offset = cursor - file->current_cluster_offset;
+        return FATX_STATUS_SUCCESS;
+    }
+
+    // Fast-path 2: sequential advance forward from current_cluster_offset
+    if (file->cluster_valid && cursor >= file->current_cluster_offset + bpc)
+    {
+        while (cursor >= file->current_cluster_offset + bpc)
+        {
+            fatx_fat_entry fat_entry;
+            int status = fatx_read_fat(file->fs, file->current_cluster, &fat_entry);
+            if (status != FATX_STATUS_SUCCESS) {
+                file->cluster_valid = 0;
+                return status;
+            }
+            int type = fatx_get_fat_entry_type(file->fs, fat_entry);
+            if (type == FATX_CLUSTER_DATA) {
+                file->current_cluster = fat_entry;
+                file->current_cluster_offset += bpc;
+            } else if (alloc && type == FATX_CLUSTER_END) {
+                size_t new_cluster;
+                status = fatx_alloc_cluster(file->fs, &new_cluster, false);
+                if (status != FATX_STATUS_SUCCESS) {
+                    file->cluster_valid = 0;
+                    return status;
+                }
+                status = fatx_attach_cluster(file->fs, file->current_cluster, new_cluster);
+                if (status != FATX_STATUS_SUCCESS) {
+                    file->cluster_valid = 0;
+                    return status;
+                }
+                file->current_cluster = new_cluster;
+                file->current_cluster_offset += bpc;
+            } else {
+                file->cluster_valid = 0;
+                return FATX_STATUS_ERROR;
+            }
+        }
+        *out_cluster = file->current_cluster;
+        *out_offset = cursor - file->current_cluster_offset;
+        return FATX_STATUS_SUCCESS;
+    }
+
+    // Slow-path: seek or backward access -> start from attr.first_cluster
+    if (file->attr.first_cluster == 0) {
+        if (alloc) {
+            size_t new_cluster;
+            int status = fatx_alloc_cluster(file->fs, &new_cluster, false);
+            if (status != FATX_STATUS_SUCCESS) {
+                file->cluster_valid = 0;
+                return status;
+            }
+            file->attr.first_cluster = new_cluster;
+            file->current_cluster = new_cluster;
+            file->current_cluster_offset = 0;
+            file->cluster_valid = 1;
+            file->attr_dirty = 1;
+            *out_cluster = new_cluster;
+            *out_offset = cursor;
+            return FATX_STATUS_SUCCESS;
+        } else {
+            file->cluster_valid = 0;
+            return FATX_STATUS_ERROR;
+        }
+    }
+
+    size_t cluster;
+    int status;
+    if (alloc) {
+        status = fatx_find_cluster_for_file_offset_alloc(file->fs, &file->attr, cursor, &cluster, true);
+    } else {
+        status = fatx_find_cluster_for_file_offset(file->fs, &file->attr, cursor, &cluster);
+    }
+    if (status != FATX_STATUS_SUCCESS) {
+        file->cluster_valid = 0;
+        return status;
+    }
+
+    file->current_cluster = cluster;
+    file->current_cluster_offset = (cursor / bpc) * bpc;
+    file->cluster_valid = 1;
+    *out_cluster = cluster;
+    *out_offset = cursor - file->current_cluster_offset;
+    return FATX_STATUS_SUCCESS;
+}
+
 ssize_t fatx_fs_read(user_file_handle_t *fd, void *buffer, size_t count)
 {
     fatx_file_t *file = (fatx_file_t *)fd;
-    struct fatx_fs *fs = file->fs;
 
-    if (file->flags & O_APPEND) {
-        return -1;
+    if (file->cursor >= file->attr.file_size) {
+        return 0; // EOF
     }
 
-    ssize_t bytes_transferred = fatx_read(fs, file->path, file->cursor, count, buffer);
-    if (bytes_transferred > 0) {
-        file->cursor += bytes_transferred;
+    size_t bytes_to_read = count;
+    if (file->cursor + bytes_to_read > file->attr.file_size) {
+        bytes_to_read = file->attr.file_size - file->cursor;
     }
-    return bytes_transferred;
+    if (bytes_to_read == 0) {
+        return 0;
+    }
+
+    size_t total_bytes_read = 0;
+    uint8_t *buf = (uint8_t *)buffer;
+    uint32_t bpc = file->fs->bytes_per_cluster;
+
+    while (total_bytes_read < bytes_to_read) {
+        size_t cluster;
+        uint32_t cluster_offset;
+        int status = fatx_file_resolve_cluster(file, &cluster, &cluster_offset, false);
+        if (status != FATX_STATUS_SUCCESS) {
+            break;
+        }
+
+        size_t bytes_remaining = bytes_to_read - total_bytes_read;
+        size_t chunk = FATX_MIN(bpc - cluster_offset, bytes_remaining);
+
+        // If reading to end of cluster, check if subsequent clusters are contiguous on disk
+        if (cluster_offset + chunk == bpc && bytes_remaining > chunk) {
+            size_t next_cluster = cluster;
+            while (chunk + bpc <= bytes_remaining) {
+                fatx_fat_entry fat_entry;
+                if (fatx_read_fat(file->fs, next_cluster, &fat_entry) != FATX_STATUS_SUCCESS) {
+                    break;
+                }
+                if (fatx_get_fat_entry_type(file->fs, fat_entry) != FATX_CLUSTER_DATA) {
+                    break;
+                }
+                if (fat_entry != next_cluster + 1) {
+                    break; // Non-contiguous cluster
+                }
+                next_cluster = fat_entry;
+                chunk += bpc;
+            }
+        }
+
+        status = fatx_dev_seek_cluster(file->fs, cluster, cluster_offset);
+        if (status != FATX_STATUS_SUCCESS) {
+            break;
+        }
+
+        size_t read_bytes = fatx_dev_read(file->fs, buf, 1, chunk);
+        if (read_bytes == 0) {
+            break;
+        }
+
+        total_bytes_read += read_bytes;
+        file->cursor += read_bytes;
+        buf += read_bytes;
+    }
+
+    return total_bytes_read > 0 ? (ssize_t)total_bytes_read : (bytes_to_read == 0 ? 0 : -1);
 }
 
 ssize_t fatx_fs_write(user_file_handle_t *fd, const void *buffer, size_t count)
 {
     fatx_file_t *file = (fatx_file_t *)fd;
-    struct fatx_fs *fs = file->fs;
 
     if (file->flags & O_APPEND) {
-        return -1;
+        file->cursor = file->attr.file_size;
     }
 
-    ssize_t bytes_transferred = fatx_write(fs, file->path, file->cursor, count, buffer);
-    if (bytes_transferred > 0) {
-        file->cursor += bytes_transferred;
+    if (count == 0) {
+        return 0;
     }
-    return bytes_transferred;
+
+    size_t total_written = 0;
+    const uint8_t *buf = (const uint8_t *)buffer;
+    uint32_t bpc = file->fs->bytes_per_cluster;
+
+    while (total_written < count) {
+        size_t cluster;
+        uint32_t cluster_offset;
+        int status = fatx_file_resolve_cluster(file, &cluster, &cluster_offset, true);
+        if (status != FATX_STATUS_SUCCESS) {
+            break;
+        }
+
+        size_t bytes_remaining = count - total_written;
+        size_t chunk = FATX_MIN(bpc - cluster_offset, bytes_remaining);
+
+        status = fatx_dev_seek_cluster(file->fs, cluster, cluster_offset);
+        if (status != FATX_STATUS_SUCCESS) {
+            break;
+        }
+
+        size_t written = fatx_dev_write(file->fs, buf, 1, chunk);
+        if (written == 0) {
+            break;
+        }
+
+        total_written += written;
+        file->cursor += written;
+        buf += written;
+
+        if (file->cursor > file->attr.file_size) {
+            file->attr.file_size = file->cursor;
+            file->attr_dirty = 1;
+        }
+    }
+
+    return total_written > 0 ? (ssize_t)total_written : (count == 0 ? 0 : -1);
 }
 
 off_t fatx_fs_lseek(user_file_handle_t *fd, off_t offset, int whence)
 {
-
     fatx_file_t *file = (fatx_file_t *)fd;
-    struct fatx_fs *fs = file->fs;
     uint32_t file_end = file->attr.file_size;
 
     uint32_t adjusted_offset = 0;
@@ -208,27 +398,30 @@ off_t fatx_fs_lseek(user_file_handle_t *fd, off_t offset, int whence)
         memset(zeroes, 0, chunk);
         file->cursor = file_end;
         while (bytes_to_write) {
-            uint32_t bytes_written = fatx_write(fs, file->path, file_end, chunk, zeroes);
-            if (bytes_written == 0) {
+            uint32_t to_write = FATX_MIN(bytes_to_write, chunk);
+            ssize_t bytes_written = fatx_fs_write(fd, zeroes, to_write);
+            if (bytes_written <= 0) {
                 vPortFree(zeroes);
                 return -1;
             }
-            file_end += bytes_written;
-            bytes_to_write -= bytes_written;
+            bytes_to_write -= (uint32_t)bytes_written;
         }
         vPortFree(zeroes);
-
-        // Re-get attributes with new file size
-        fatx_get_attr(file->fs, file->path, &file->attr);
     }
 
     file->cursor = adjusted_offset;
+    file->cluster_valid = 0;
     return adjusted_offset;
 }
 
 int fatx_fs_close(user_file_handle_t *fd)
 {
     fatx_file_t *file = (fatx_file_t *)fd;
+
+    if (file->attr_dirty) {
+        fatx_set_attr(file->fs, file->path, &file->attr);
+        file->attr_dirty = 0;
+    }
 
     // Xbox can turn off any time, be aggressive with cache flushes for writes
     if (file->flags & O_WRONLY || file->flags & O_RDWR) {
@@ -376,7 +569,8 @@ size_t fatx_dev_read(struct fatx_fs *fs, void *buf, size_t size, size_t items)
 
     assert(bytes_remaining == 0);
 
-    fatx_extra_data->seek_offset = size * items;
+    seek_offset += size * items;
+    fatx_extra_data->seek_offset = seek_offset;
     return items;
 }
 
@@ -431,6 +625,8 @@ size_t fatx_dev_write(struct fatx_fs *fs, const void *buf, size_t size, size_t i
         if (status < 0) {
             return 0;
         }
+
+        fatx_extra_data->cached_sector = CACHE_INVALID;
 
         bytes_remaining -= full_bytes;
         buf8 += full_bytes;

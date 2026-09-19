@@ -164,6 +164,10 @@ int fatx_attr_to_dirent(struct fatx_fs *fs, struct fatx_attr *attr, struct fatx_
 int fatx_mark_dir_entry_deleted(struct fatx_fs *fs, struct fatx_dir *dir);
 int fatx_mark_end_of_dir(struct fatx_fs *fs, struct fatx_dir *dir);
 
+/* File Functions */
+int fatx_find_cluster_for_file_offset_alloc(struct fatx_fs *fs, struct fatx_attr *attr, size_t offset, size_t *result, bool alloc);
+int fatx_find_cluster_for_file_offset(struct fatx_fs *fs, struct fatx_attr *attr, size_t offset, size_t *result);
+
 /* Misc Functions */
 int fatx_get_path_component(char const *path, size_t component, char const **start, size_t *len);
 int fatx_unpack_date(uint16_t in, struct fatx_ts *out);
