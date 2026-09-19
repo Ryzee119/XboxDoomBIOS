@@ -138,8 +138,6 @@ static void freertos_entry(void *parameters)
     printf_ts("TIMING: 214: %08x\n", xbox_gpu_input32(PBUS, 0x214));
     printf_ts("TIMING: 218: %08x\n", xbox_gpu_input32(PBUS, 0x218));
 
-    vTaskDelay(1000);
-
     xTaskCreate(doom_task, "Doom!", configMINIMAL_STACK_SIZE * 2, NULL, THREAD_PRIORITY_NORMAL, NULL);
 
     // We are done here. Delete this task.

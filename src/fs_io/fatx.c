@@ -545,14 +545,27 @@ size_t fatx_dev_read(struct fatx_fs *fs, void *buf, size_t size, size_t items)
 
     // Sector aligned read
     if (bytes_remaining >= sector_size) {
-        uint32_t full_sectors = bytes_remaining / sector_size;
-        uint64_t full_bytes = full_sectors * sector_size;
+        if (((uint32_t)buf8 & 0x3) == 0) {
+            uint32_t full_sectors = bytes_remaining / sector_size;
+            uint64_t full_bytes = full_sectors * sector_size;
 
-        fatx_extra_data->driver->io_ll->read(fatx_extra_data->driver->ll_handle, buf8, current_lba, full_sectors);
+            fatx_extra_data->driver->io_ll->read(fatx_extra_data->driver->ll_handle, buf8, current_lba, full_sectors);
 
-        bytes_remaining -= full_bytes;
-        buf8 += full_bytes;
-        current_lba += full_sectors;
+            bytes_remaining -= full_bytes;
+            buf8 += full_bytes;
+            current_lba += full_sectors;
+        } else {
+            while (bytes_remaining >= sector_size) {
+                fatx_extra_data->driver->io_ll->read(fatx_extra_data->driver->ll_handle,
+                                                     fatx_extra_data->sector_cache, current_lba, 1);
+                fatx_extra_data->cached_sector = current_lba;
+                memcpy(buf8, fatx_extra_data->sector_cache, sector_size);
+
+                bytes_remaining -= sector_size;
+                buf8 += sector_size;
+                current_lba++;
+            }
+        }
     }
 
     // Partial read for last sector
@@ -617,20 +630,37 @@ size_t fatx_dev_write(struct fatx_fs *fs, const void *buf, size_t size, size_t i
 
     // Sector aligned write
     if (bytes_remaining >= sector_size) {
-        uint32_t full_sectors = bytes_remaining / sector_size;
-        uint64_t full_bytes = full_sectors * sector_size;
+        if (((uint32_t)buf8 & 0x3) == 0) {
+            uint32_t full_sectors = bytes_remaining / sector_size;
+            uint64_t full_bytes = full_sectors * sector_size;
 
-        status =
-            fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle, buf8, current_lba, full_sectors);
-        if (status < 0) {
-            return 0;
+            status =
+                fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle, buf8, current_lba, full_sectors);
+            if (status < 0) {
+                return 0;
+            }
+
+            fatx_extra_data->cached_sector = CACHE_INVALID;
+
+            bytes_remaining -= full_bytes;
+            buf8 += full_bytes;
+            current_lba += full_sectors;
+        } else {
+            while (bytes_remaining >= sector_size) {
+                memcpy(fatx_extra_data->sector_cache, buf8, sector_size);
+                status = fatx_extra_data->driver->io_ll->write(fatx_extra_data->driver->ll_handle,
+                                                               fatx_extra_data->sector_cache, current_lba, 1);
+                if (status < 0) {
+                    fatx_extra_data->cached_sector = CACHE_INVALID;
+                    return 0;
+                }
+                fatx_extra_data->cached_sector = current_lba;
+
+                bytes_remaining -= sector_size;
+                buf8 += sector_size;
+                current_lba++;
+            }
         }
-
-        fatx_extra_data->cached_sector = CACHE_INVALID;
-
-        bytes_remaining -= full_bytes;
-        buf8 += full_bytes;
-        current_lba += full_sectors;
     }
 
     // Partial write for last sector
