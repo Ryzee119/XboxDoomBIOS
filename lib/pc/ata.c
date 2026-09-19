@@ -379,16 +379,6 @@ static int8_t ata_dma_transfer(ata_bus_t *ata_bus, uint8_t device_index, ata_com
         goto bail_out;
     }
 
-    if (read == 0) {
-        ata_command_t flush_cmd = {
-            .command = (is_lba28) ? ATA_CMD_FLUSH_CACHE : ATA_CMD_FLUSH_CACHE_EXT,
-            .lba = 0,
-            .sector_count = 0,
-            .feature = 0,
-        };
-        ata_send_command(ata_bus, device_index, &flush_cmd);
-    }
-
 bail_out:
     spinlock_release(&ata_bus->lock);
     return error;
@@ -644,4 +634,23 @@ int8_t ide_dma_write(ata_bus_t *ata_bus, uint8_t device_index, uint64_t lba, con
 {
     assert(((uint32_t)buffer & 0x3) == 0);
     return ide_dma_io(ata_bus, device_index, 0, lba, (void *)buffer, sector_count);
+}
+
+int8_t ide_flush_cache(ata_bus_t *ata_bus, uint8_t device_index)
+{
+    const ide_device_t *ide_device = (device_index == 0) ? &ata_bus->master : &ata_bus->slave;
+    if (ide_device->is_present == 0 || ide_device->is_atapi == 1) {
+        return -1;
+    }
+    const int8_t is_lba48 = (ide_device->ata.total_sector_count_lba48 > 0);
+    ata_command_t flush_cmd = {
+        .command = (is_lba48) ? ATA_CMD_FLUSH_CACHE_EXT : ATA_CMD_FLUSH_CACHE,
+        .lba = 0,
+        .sector_count = 0,
+        .feature = 0,
+    };
+    spinlock_acquire(&ata_bus->lock);
+    int8_t error = ata_send_command(ata_bus, device_index, &flush_cmd);
+    spinlock_release(&ata_bus->lock);
+    return error;
 }

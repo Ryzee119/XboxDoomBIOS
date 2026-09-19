@@ -144,5 +144,6 @@ int8_t ide_bus_init(uint16_t busmaster_base, uint16_t ctrl_base, uint16_t io_bas
 // Main read and write functions for IDE bus devices. Autommatically selects ATA or ATAPI based on the device type
 int8_t ide_dma_read(ata_bus_t *ata_bus, uint8_t device_index, uint64_t lba, void *buffer, uint32_t sector_count);
 int8_t ide_dma_write(ata_bus_t *ata_bus, uint8_t device_index, uint64_t lba, const void *buffer, uint32_t sector_count);
+int8_t ide_flush_cache(ata_bus_t *ata_bus, uint8_t device_index);
 
 #endif // ATA_H

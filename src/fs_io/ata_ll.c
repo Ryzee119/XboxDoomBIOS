@@ -62,7 +62,7 @@ static int8_t ata_disk_ioctl(user_fs_ll_handle_t *handle, fs_ioctrl_cmd_t cmd, v
 
     switch (cmd) {
         case FS_IO_SYNC:
-            return 0;
+            return ide_flush_cache(ata_bus, drive_index);
         case FS_IO_GET_SECTOR_COUNT:
             if (ide_device->is_atapi) {
                 *((uint64_t *)buff) = ide_device->atapi.total_sector_count;

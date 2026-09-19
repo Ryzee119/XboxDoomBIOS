@@ -426,6 +426,10 @@ int fatx_fs_close(user_file_handle_t *fd)
     // Xbox can turn off any time, be aggressive with cache flushes for writes
     if (file->flags & O_WRONLY || file->flags & O_RDWR) {
         fatx_flush_fat_cache(file->fs);
+        fatx_extra_data_t *fatx_extra_data = (fatx_extra_data_t *)file->fs->user_data;
+        if (fatx_extra_data && fatx_extra_data->driver && fatx_extra_data->driver->io_ll->ioctrl) {
+            fatx_extra_data->driver->io_ll->ioctrl(fatx_extra_data->driver->ll_handle, FS_IO_SYNC, NULL);
+        }
     }
 
     vPortFree(file);
