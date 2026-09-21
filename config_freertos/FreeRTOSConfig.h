@@ -504,4 +504,10 @@ static inline void printme(const char *f, int l) {
 #define configUSE_COMMON_INTERRUPT_ENTRY_POINT 0
 #define configSUPPORT_FPU 1
 #define configUSE_PICOLIBC_TLS 1
+
+#define configLIST_VOLATILE                    volatile
+#ifndef portMEMORY_BARRIER
+#define portMEMORY_BARRIER()                   __asm volatile ( "" ::: "memory" )
+#endif
+
 #endif /* FREERTOS_CONFIG_H */
