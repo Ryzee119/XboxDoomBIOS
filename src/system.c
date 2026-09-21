@@ -32,3 +32,64 @@ void *system_get_physical_address(void *virtual_address)
 {
     return virtual_address;
 }
+
+#include <sys/lock.h>
+
+struct __lock
+{
+    char unused;
+};
+
+struct __lock __lock___libc_recursive_mutex;
+
+void __retarget_lock_init(_LOCK_T *lock)
+{
+    (void)lock;
+}
+
+void __retarget_lock_init_recursive(_LOCK_T *lock)
+{
+    (void)lock;
+}
+
+void __retarget_lock_close(_LOCK_T lock)
+{
+    (void)lock;
+}
+
+void __retarget_lock_close_recursive(_LOCK_T lock)
+{
+    (void)lock;
+}
+
+void __no_thread_safety_analysis __retarget_lock_acquire(_LOCK_T lock)
+{
+    (void)lock;
+    if (freertos_running) {
+        vTaskSuspendAll();
+    }
+}
+
+void __no_thread_safety_analysis __retarget_lock_acquire_recursive(_LOCK_T lock)
+{
+    (void)lock;
+    if (freertos_running) {
+        vTaskSuspendAll();
+    }
+}
+
+void __no_thread_safety_analysis __retarget_lock_release(_LOCK_T lock)
+{
+    (void)lock;
+    if (freertos_running) {
+        (void)xTaskResumeAll();
+    }
+}
+
+void __no_thread_safety_analysis __retarget_lock_release_recursive(_LOCK_T lock)
+{
+    (void)lock;
+    if (freertos_running) {
+        (void)xTaskResumeAll();
+    }
+}
