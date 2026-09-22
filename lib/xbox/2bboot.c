@@ -122,7 +122,8 @@ __attribute__((section(".boot_code"))) void *boot_memmove(void *dest, const void
 #define LZ4_memmove(dst, src, size) boot_memmove((dst), (src), (size))
 #define LZ4_memcpy(dst, src, size)  boot_memcpy((dst), (src), (size))
 #define LZ4_memset(p, v, s)         boot_memset((p), (v), (s))
-#define LZ4_FORCE_O2                __attribute__((section(".boot_code")))
+#define LZ4_FORCE_O2
+__attribute__((section(".boot_code"))) int LZ4_decompress_fast(const char *source, char *dest, int originalSize);
 __attribute__((section(".boot_code"))) void *lz4_error_memory_allocation_is_disabled(void)
 {
     return NULL;
